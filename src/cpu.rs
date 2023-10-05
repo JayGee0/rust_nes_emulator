@@ -1,3 +1,4 @@
+use crate::opcodes::OPCODES_MAP;
 pub struct CPU {
     pub register_a: u8,
     pub register_x: u8,
@@ -218,92 +219,29 @@ impl CPU {
     pub fn run(&mut self) {
 
         loop {
-            let opcode = self.mem_read(self.program_counter);
+            let opcode = *&OPCODES_MAP.get(&self.mem_read(self.program_counter)).unwrap();
             self.program_counter += 1;
 
-            match opcode {
+            match opcode.code {
                 /*
                 --------------------------
                 LDA
                 --------------------------
                 */
-                0xA9 => { // LDA Immediate
-                    self.lda(&AddressingMode::Immediate);
-                    self.program_counter += 1;
-                },
-
-                0xA5 => { // LDA Zero Page
-                    self.lda(&AddressingMode::ZeroPage);
-                    self.program_counter += 1;
-                },
-
-                0xB5 => { // LDA Zero Page, X
-                    self.lda(&AddressingMode::ZeroPage_X);
-                    self.program_counter += 1;
-                },
-
-                0xAD => { // LDA Absolute
-                    self.lda(&AddressingMode::Absolute);
-                    self.program_counter += 2;
-                },
-
-                0xBD => { // LDA Absolute, X
-                    self.lda(&AddressingMode::Absolute_X);
-                    self.program_counter += 2;
-                },
+                0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => {
+                    self.lda(&opcode.mode);
+                    self.program_counter += opcode.len as u16 - 1;
+                }
                 
-                0xB9 => { // LDA Absolute, Y
-                    self.lda(&AddressingMode::Absolute_Y);
-                    self.program_counter += 2;
-                },
-
-                0xA1 => { // LDA (Indirect, X)
-                    self.lda(&AddressingMode::Indirect_X);
-                    self.program_counter += 1;
-                },
-
-                0xB1 => { // LDA (Indirect), Y
-                    self.lda(&AddressingMode::Indirect_Y);
-                    self.program_counter += 1;
-                },
-
                 /*
                 --------------------------
                 STA
                 --------------------------
                 */
-
-                0x85 => { // STA Zero Page
-                    self.sta(&AddressingMode::ZeroPage);
-                    self.program_counter += 1;
-                },
-                0x95 => { // STA Zero Page, X
-                    self.sta(&AddressingMode::ZeroPage_X);
-                    self.program_counter += 1;
-                },
-                0x8D => { // STA Absolute
-                    self.sta(&AddressingMode::Absolute);
-                    self.program_counter += 2;
-                },
-                0x9D => { // STA Absolute, X
-                    self.sta(&AddressingMode::Absolute_X);
-                    self.program_counter += 2;
-                },
-                0x99 => { // STA Absolute, Y
-                    self.sta(&AddressingMode::Absolute_Y);
-                    self.program_counter += 2;
-                },
-                0x81 => { // STA (Indirect, X)
-                    self.sta(&AddressingMode::Indirect_X);
-                    self.program_counter += 1;
-                },
-                0x91 => { // STA (Indirect), Y
-                    self.sta(&AddressingMode::Indirect_Y);
-                    self.program_counter += 1;
-                },
-
-
-
+                0x85 | 0x95 | 0x8D | 0x9D | 0x99 | 0x81 | 0x91 => {
+                    self.sta(&opcode.mode);
+                    self.program_counter += opcode.len as u16 - 1;
+                }
 
                 0xAA => self.tax(), // TAX
                 0xE8 => self.inx(), // INX
