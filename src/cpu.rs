@@ -170,6 +170,13 @@ impl CPU {
 
     }
 
+    // Logical AND
+    fn and(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        self.register_a &= self.mem_read(addr);
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+
     // Load Accumulator
     fn lda(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_address(mode);
@@ -223,24 +230,20 @@ impl CPU {
             self.program_counter += 1;
 
             match opcode.code {
-                /*
-                --------------------------
-                LDA
-                --------------------------
-                */
-                0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => {
-                    self.lda(&opcode.mode);
-                    self.program_counter += opcode.len as u16 - 1;
+                
+                // AND
+                0x29 | 0x25 | 0x35 | 0x2D | 0x3D | 0x39 | 0x21 | 0x31 => {
+                    self.and(&opcode.mode);
                 }
                 
-                /*
-                --------------------------
-                STA
-                --------------------------
-                */
+                // LDA
+                0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => {
+                    self.lda(&opcode.mode);
+                }
+                
+                // STA
                 0x85 | 0x95 | 0x8D | 0x9D | 0x99 | 0x81 | 0x91 => {
                     self.sta(&opcode.mode);
-                    self.program_counter += opcode.len as u16 - 1;
                 }
 
                 0xAA => self.tax(), // TAX
@@ -249,6 +252,7 @@ impl CPU {
 
                 _ => todo!("")
             }
+            self.program_counter += opcode.len as u16 - 1;
         }
 
     }
@@ -259,6 +263,32 @@ impl CPU {
 #[cfg(test)]
 mod test { 
     use super::*;
+    
+    #[test]
+    fn test_and_immediate() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x05, 0x29, 0x01, 0x00]); // Load 5 into acc and AND with 1
+        assert_eq!(cpu.register_a, 0x01); // Check if A = 1
+        assert!(cpu.status & 0b0000_0010 == 0b00); // Check the Z flag is off
+        assert!(cpu.status & 0b1000_0000 == 0); // Check the N flag is off
+    }
+    
+    #[test]
+    fn test_and_zero_flag() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x05, 0x29, 0x00, 0x00]); // Load 5 into acc and AND with 0
+        assert!(cpu.status & 0b0000_0010 == 0b10) // Check Z flag is on
+    }
+
+    #[test]
+    fn test_and_from_memory() {
+        let mut cpu = CPU::new();
+        cpu.mem_write(0x10, 0x51);
+
+        cpu.load_and_run(vec![0xa9, 0x55, 0x25, 0x10, 0x00]); // Load 5 into acc and AND with location in 
+        assert!(cpu.register_a == 0x51) 
+    }
+
 
     #[test]
     fn test_0xa9_lda_immediate_load_data() {
