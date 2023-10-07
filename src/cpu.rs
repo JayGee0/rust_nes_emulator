@@ -1,4 +1,19 @@
 use crate::opcodes::OPCODES_MAP;
+use bitflags::bitflags;
+
+bitflags! {
+    pub struct CPUFlags: u8 {
+        const NEGATIVE   = 0b1000_0000;
+        const OVERFLOW   = 0b0100_0000;
+        const BREAK1     = 0b0010_0000;
+        const BREAK2     = 0b0001_0000;
+        const DECIMAL    = 0b0000_1000;
+        const INTERRUPT  = 0b0000_0100;
+        const ZERO       = 0b0000_0010;
+        const CARRY      = 0b0000_0001;
+    }
+}
+
 pub struct CPU {
     pub register_a: u8,
     pub register_x: u8,
@@ -15,7 +30,7 @@ pub struct CPU {
     Z - Zero 
     C - Carry
      */
-    pub status: u8,
+    pub status: CPUFlags,
     pub program_counter: u16,
     memory: [u8; 0xFFFF] // Array of u8 of length 0xFFFF
 }
@@ -42,7 +57,7 @@ impl CPU {
             register_a: 0,
             register_x: 0,
             register_y: 0,
-            status: 0,
+            status: CPUFlags::empty(),
             program_counter: 0,
             memory: [0; 0xFFFF],
         }
@@ -74,7 +89,7 @@ impl CPU {
     pub fn reset(&mut self) {
         self.register_a = 0;
         self.register_x = 0;
-        self.status = 0;
+        self.status = CPUFlags::empty();
         self.program_counter = self.mem_read_u16(0xFFFC);
     }
 
@@ -208,18 +223,18 @@ impl CPU {
     fn update_zero_and_negative_flags(&mut self, result: u8) {
         // If result=0... Set the Z (Zero) flag to 1
         if result == 0 {
-            self.status = self.status | 0b0000_0010;
+            self.status.insert(CPUFlags::ZERO);
         } else {
             // If not, then set it to 0
-            self.status = self.status & 0b1111_1101;
+            self.status.remove(CPUFlags::ZERO);
         }
 
         // If the 7th bit of result is set (i.e. negative number)
         // Set the N (negative) flag to 0 
         if result & 0b1000_0000 != 0 {
-            self.status = self.status | 0b1000_0000; 
+            self.status.insert(CPUFlags::NEGATIVE); 
         } else {
-            self.status = self.status & 0b0111_1111;
+            self.status.remove(CPUFlags::NEGATIVE);
         }
     }
 
@@ -269,15 +284,15 @@ mod test {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x05, 0x29, 0x01, 0x00]); // Load 5 into acc and AND with 1
         assert_eq!(cpu.register_a, 0x01); // Check if A = 1
-        assert!(cpu.status & 0b0000_0010 == 0b00); // Check the Z flag is off
-        assert!(cpu.status & 0b1000_0000 == 0); // Check the N flag is off
+        assert!(!cpu.status.contains(CPUFlags::ZERO)); // Check the Z flag is off
+        assert!(!cpu.status.contains(CPUFlags::NEGATIVE)); // Check the N flag is off
     }
     
     #[test]
     fn test_and_zero_flag() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x05, 0x29, 0x00, 0x00]); // Load 5 into acc and AND with 0
-        assert!(cpu.status & 0b0000_0010 == 0b10) // Check Z flag is on
+        assert!(cpu.status.contains(CPUFlags::ZERO)) // Check Z flag is on
     }
 
     #[test]
@@ -295,15 +310,15 @@ mod test {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x05, 0x00]); // Load in 5 into the Accumulator
         assert_eq!(cpu.register_a, 0x05); // Check if A = 5
-        assert!(cpu.status & 0b0000_0010 == 0b00); // Check the Z flag is off
-        assert!(cpu.status & 0b1000_0000 == 0); // Check the N flag is off
+        assert!(!cpu.status.contains(CPUFlags::ZERO)); // Check the Z flag is off
+        assert!(!cpu.status.contains(CPUFlags::NEGATIVE)); // Check the N flag is off
     }
     
     #[test]
     fn test_0xa9_lda_zero_flag() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x00, 0x00]); // Load 0 into accumulator
-        assert!(cpu.status & 0b0000_0010 == 0b10) // Check Z flag is on
+        assert!(cpu.status.contains(CPUFlags::ZERO)) // Check Z flag is on
     }
 
     #[test]
