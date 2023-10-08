@@ -97,7 +97,7 @@ lazy_static! {
         OpCode::new(0x18, "CLC", 1, 2, AddressingMode::NoneAddressing), // CLC - Clear Carry Flag
         OpCode::new(0xD8, "CLD", 1, 2, AddressingMode::NoneAddressing), // CLD - Clear Decimal Mode
         OpCode::new(0x58, "CLI", 1, 2, AddressingMode::NoneAddressing), // CLI - Clear Interrupt Disable
-        OpCode::new(0x58, "CLV", 1, 2, AddressingMode::NoneAddressing), // CLV - Clear Overflow Flag
+        OpCode::new(0xB8, "CLV", 1, 2, AddressingMode::NoneAddressing), // CLV - Clear Overflow Flag
 
         /*
         =========================
