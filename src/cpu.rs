@@ -358,6 +358,23 @@ impl CPU {
         }
     }
 
+    fn calculate_branch_offset_clear(&mut self, condition: CPUFlags) -> u16 {
+        if !self.status.contains(condition) {
+            return self.mem_read(self.program_counter+1) as u16
+        }
+        return 0
+    }
+
+    fn calculate_branch_offset_set(&mut self, condition: CPUFlags) -> u16 {
+        if self.status.contains(condition) {
+            return self.mem_read(self.program_counter+1) as u16
+        }
+        return 0
+    }
+
+    // BCC Check if bit is off
+    // BCS Check if bit is on
+
     pub fn run(&mut self) {
 
         loop {
@@ -381,43 +398,43 @@ impl CPU {
                 0x0A | 0x06 | 0x16 | 0x0E | 0x1E => {},
 
                 // BCC
-                0x90 => {},
+                0x90 => self.program_counter += self.calculate_branch_offset_clear(CPUFlags::CARRY),         
 
                 // BCS
-                0xB0 => {},
+                0xB0 => self.program_counter += self.calculate_branch_offset_set(CPUFlags::CARRY),
 
                 // BEQ
-                0xF0 => {},
+                0xF0 => self.program_counter += self.calculate_branch_offset_set(CPUFlags::ZERO),
 
                 // BMI
-                0x30 => {},
+                0x30 => self.program_counter += self.calculate_branch_offset_set(CPUFlags::NEGATIVE),
 
                 // BNE
-                0xD0 => {},
+                0xD0 => self.program_counter += self.calculate_branch_offset_clear(CPUFlags::ZERO),
 
                 // BPL
-                0x10 => {},
+                0x10 => self.program_counter += self.calculate_branch_offset_clear(CPUFlags::NEGATIVE),
 
                 // BVC
-                0x50 => {},
+                0x50 => self.program_counter += self.calculate_branch_offset_clear(CPUFlags::OVERFLOW),
 
                 // BVS
-                0x70 => {},
+                0x70 => self.program_counter += self.calculate_branch_offset_set(CPUFlags::OVERFLOW),
 
                 // BIT
                 0x24 | 0x2C => {},
 
                 // CLC
-                0x18 => {},
+                0x18 => self.status.remove(CPUFlags::CARRY),
 
                 // CLD
-                0xD8 => {},
+                0xD8 => self.status.remove(CPUFlags::DECIMAL),
 
                 // CLI
-                0x58 => {},
+                0x58 => self.status.remove(CPUFlags::INTERRUPT),
 
                 // CLV
-                0xB8 => {},
+                0xB8 => self.status.remove(CPUFlags::OVERFLOW),
 
                 // CMP
                 0xC9 | 0xC5 | 0xD5 | 0xCD | 0xDD | 0xD9 | 0xC1 | 0xD1 | 0x49 | 0x45 | 0x55 | 0x4D | 0x5D | 0x59 | 0x41 | 0x51 => {},
@@ -445,7 +462,6 @@ impl CPU {
 
                 // INY
                 0xC8 => self.iny(),
-                
 
                 // JMP
                 0x4C | 0x6C => {},
@@ -460,7 +476,6 @@ impl CPU {
                 0xA2 | 0xA6 | 0xB6 | 0xAE | 0xBE => {},
 
                 // LDY
-                
                 0xA0 | 0xA4 | 0xB4 | 0xAC | 0xBC => {},
 
                 // LSR
@@ -555,6 +570,17 @@ mod test {
     }
 
     #[test]
+    fn test_clear_flags() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x38, 0xF8, 0x78, 0x18, 0xD8, 0x58, 0x00]); // SEC SED SEI CLC CLD CLI BRK
+        
+        assert!(!cpu.status.contains(CPUFlags::CARRY));
+        assert!(!cpu.status.contains(CPUFlags::DECIMAL));
+        assert!(!cpu.status.contains(CPUFlags::INTERRUPT));
+    }
+
+
+    #[test]
     fn test_adc_immediate_without_carry() {
         
         let mut cpu = CPU::new();
@@ -608,6 +634,13 @@ mod test {
         assert!(cpu.register_a == 0x51) 
     }
 
+    #[test]
+    fn test_bcc() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x90, 0x02, 0x78, 0x00]); // BCC #02 SEI BRK
+        
+        assert!(!cpu.status.contains(CPUFlags::INTERRUPT));
+    }
 
     #[test]
     fn test_0xa9_lda_immediate_load_data() {
