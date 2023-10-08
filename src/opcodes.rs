@@ -346,7 +346,7 @@ lazy_static! {
         OpCode::new(0xBA, "TSX", 1, 2, AddressingMode::NoneAddressing), // TSX - Transfer Stack Pointer to X
         OpCode::new(0x8A, "TXA", 1, 2, AddressingMode::NoneAddressing), // TXA - Transfer X to Accumulator
         OpCode::new(0x9A, "TXS", 1, 2, AddressingMode::NoneAddressing), // TXS - Transfer X to Stack Pointer
-        OpCode::new(0x98, "TXS", 1, 2, AddressingMode::NoneAddressing), // TYA - Transfer Y to Accumulator
+        OpCode::new(0x98, "TYA", 1, 2, AddressingMode::NoneAddressing), // TYA - Transfer Y to Accumulator
 
 
     ];

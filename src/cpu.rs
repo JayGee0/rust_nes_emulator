@@ -11,6 +11,7 @@ bitflags! {
         const INTERRUPT  = 0b0000_0100;
         const ZERO       = 0b0000_0010;
         const CARRY      = 0b0000_0001;
+        
     }
 }
 
@@ -18,6 +19,8 @@ pub struct CPU {
     pub register_a: u8,
     pub register_x: u8,
     pub register_y: u8,
+    
+    pub register_s: u8,
     /*
     NVss DIZC
     7_______0
@@ -25,28 +28,36 @@ pub struct CPU {
     N - Negative
     V - Overflow
     ss - B flag, doesn't affect CPU operation, 1 by default
+    
     D - Decimal
     I - Interrupt Disable Signal
     Z - Zero 
     C - Carry
+    
      */
     pub status: CPUFlags,
     pub program_counter: u16,
     memory: [u8; 0xFFFF] // Array of u8 of length 0xFFFF
+    
+    
 }
 
 #[derive(Debug)]
 #[allow(non_camel_case_types)]
+
 pub enum AddressingMode {
     Immediate,
     ZeroPage,
     ZeroPage_X,
     ZeroPage_Y,
+    
     Absolute,
     Absolute_X,
     Absolute_Y,
+    
     Indirect_X,
     Indirect_Y,
+    
     NoneAddressing
 }
 
@@ -57,25 +68,32 @@ impl CPU {
             register_a: 0,
             register_x: 0,
             register_y: 0,
+            register_s: 0xFF,
             status: CPUFlags::empty(),
+            
             program_counter: 0,
             memory: [0; 0xFFFF],
+            
         }
     }
 
     fn mem_read(&self, addr: u16) -> u8 {
         self.memory[addr as usize]
+        
     }
 
     fn mem_write(&mut self, addr: u16, data: u8) {
         self.memory[addr as usize] = data;
+        
     }
 
     fn mem_read_u16(&mut self, pos: u16) -> u16 {
         let lo = self.mem_read(pos) as u16; // Reading the data from pos
         let hi = self.mem_read(pos + 1) as u16; // Reading the next data
         // Shifting the next data left by 8 bits and replacing 
+        
         // The empty 0s with the bits from the first 8 bits
+        
         (hi << 8) | (lo as u16) 
     }
 
@@ -89,7 +107,11 @@ impl CPU {
     pub fn reset(&mut self) {
         self.register_a = 0;
         self.register_x = 0;
+        self.register_y = 0;
+        
+        self.register_s = 0xFF;
         self.status = CPUFlags::empty();
+        
         self.program_counter = self.mem_read_u16(0xFFFC);
     }
 
@@ -101,6 +123,8 @@ impl CPU {
 
     pub fn load(&mut self, program: Vec<u8>) {
         self.memory[0x8000 .. (0x8000 + program.len())].copy_from_slice(&program[..]);
+        
+        
         self.mem_write_u16(0xFFFC, 0x8000);
     }
 
@@ -113,7 +137,11 @@ impl CPU {
             AddressingMode::Immediate => self.program_counter,
 
             // Address data from the next 8 bits only (the first 256 bytes of memory)
+            
+            
+            
             // Good for conserving speed and memory
+            
             // e.g. LDA $00 loads accumulator from $0000
             AddressingMode::ZeroPage => self.mem_read(self.program_counter) as u16,
 
@@ -131,10 +159,15 @@ impl CPU {
             },
 
             // Same as ZeroPage_X except with Y this time. Can only be used with LDX and SDX
+            
+            
             // e.g. LDX $10,Y
+            
             AddressingMode::ZeroPage_Y => {
+                
                 let pos = self.mem_read(self.program_counter);
                 let addr = pos.wrapping_add(self.register_y) as u16;
+                
                 addr
             },
 
@@ -147,10 +180,14 @@ impl CPU {
             },
 
             // Same as Absolute, however with adding the value from register_y
+            
             // e.g. LDA $1000,Y
+            
             AddressingMode::Absolute_Y => {
+                
                 let pos = self.mem_read_u16(self.program_counter);
                 let addr = pos.wrapping_add(self.register_y as u16);
+                
                 addr
             },
             
@@ -167,13 +204,16 @@ impl CPU {
             }
 
             // Indirect Indexed, Zero page location of the LSB of 16 bit address + register_y
+            
             AddressingMode::Indirect_Y => {
+                
                 let base = self.mem_read(self.program_counter);
 
                 let lo = self.mem_read(base as u16);
                 let hi = self.mem_read((base as u8).wrapping_add(1) as u16);
                 let deref_base = (hi as u16) << 8 | (lo as u16);
                 let deref = deref_base.wrapping_add(self.register_y as u16);
+                
                 deref
             }
 
@@ -187,19 +227,23 @@ impl CPU {
 
     // https://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
     // Add with Carry
+    
     fn adc(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
         let data = self.mem_read(addr);
 
         let mut result: u16 = self.register_a as u16 + data as u16;
         if self.status.contains(CPUFlags::CARRY) {
+            
             result += 1;
         }
 
         if result > 0xff {
             self.status.insert(CPUFlags::CARRY);
+            
         } else {
             self.status.remove(CPUFlags::CARRY);
+            
         }
 
         let result = result as u8;
@@ -238,6 +282,32 @@ impl CPU {
         self.update_zero_and_negative_flags(self.register_x);
     }
 
+    // Transfer Accumulator to Y
+    fn tay(&mut self) {
+        self.register_y = self.register_a;
+        self.update_zero_and_negative_flags(self.register_y);
+    }
+
+    // Transfer Stack Pointer to X
+    fn tsx(&mut self) {
+        self.register_x = self.register_s;
+        self.update_zero_and_negative_flags(self.register_x);
+    }
+
+    // Transfer X to Accumulator
+    fn txa(&mut self) {
+        self.register_a = self.register_x;
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    // Transfer Y to Accumulator
+    fn tya(&mut self) {
+        self.register_a = self.register_y;
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+
+
+    
     // Increment X
     fn inx(&mut self) {
         // Programming in overflow
@@ -246,9 +316,28 @@ impl CPU {
         self.update_zero_and_negative_flags(self.register_x);
     }
 
+    fn iny(&mut self) {
+        
+        self.register_y = self.register_y.wrapping_add(1);
+        
+        
+        self.update_zero_and_negative_flags(self.register_y);
+        
+    }
+
     fn sta(&mut self, mode: &AddressingMode) {
         let target = self.get_operand_address(mode);
         self.mem_write(target, self.register_a);
+    }
+
+    fn stx(&mut self, mode: &AddressingMode) {
+        let target = self.get_operand_address(mode);
+        self.mem_write(target, self.register_x);
+    }
+
+    fn sty(&mut self, mode: &AddressingMode) {
+        let target = self.get_operand_address(mode);
+        self.mem_write(target, self.register_y);
     }
 
     fn update_zero_and_negative_flags(&mut self, result: u8) {
@@ -280,7 +369,7 @@ impl CPU {
                 0x00 => return,
 
                 // NOP
-                0xEA => {},
+                0xEA => {}, // Do nothing
 
                 // ADC
                 0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71 => self.adc(&opcode.mode),
@@ -345,7 +434,7 @@ impl CPU {
                 // DEX
                 0xCA => {},
 
-                // DEY
+                // DEY       
                 0x88 => {},
 
                 // INC
@@ -355,7 +444,8 @@ impl CPU {
                 0xE8 => self.inx(),
 
                 // INY
-                0xC8 => {},
+                0xC8 => self.iny(),
+                
 
                 // JMP
                 0x4C | 0x6C => {},
@@ -370,6 +460,7 @@ impl CPU {
                 0xA2 | 0xA6 | 0xB6 | 0xAE | 0xBE => {},
 
                 // LDY
+                
                 0xA0 | 0xA4 | 0xB4 | 0xAC | 0xBC => {},
 
                 // LSR
@@ -415,27 +506,28 @@ impl CPU {
                 0x85 | 0x95 | 0x8D | 0x9D | 0x99 | 0x81 | 0x91 => self.sta(&opcode.mode),
 
                 // STX
-                0x86 | 0x96 | 0x8E => {},
+                0x86 | 0x96 | 0x8E => self.stx(&opcode.mode),
 
                 // STY
-                0x84 | 0x94 | 0x8C => {},
+                0x84 | 0x94 | 0x8C => self.sty(&opcode.mode),
 
                 // TAX
                 0xAA => self.tax(),
 
                 // TAY
-                0xA8 => {},
-
+                0xA8 => self.tay(),
+                
                 // TSX
-                0xBA => {},
+                0xBA => self.tsx(),
 
                 // TXA
-                0x8A => {},
+                0x8A => self.txa(),
 
                 // TXS
-                0x9A | 0x98 => {},
+                0x9A  => self.register_s = self.register_x,
 
-
+                // TYA
+                0x98  => self.tya(),
 
                 
                 _ => todo!("")
@@ -457,12 +549,14 @@ mod test {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0x38, 0xF8, 0x78, 0x00]); // SEC SED SEI BRK
         assert!(cpu.status.contains(CPUFlags::CARRY));
+        
         assert!(cpu.status.contains(CPUFlags::DECIMAL));
         assert!(cpu.status.contains(CPUFlags::INTERRUPT));
     }
 
     #[test]
     fn test_adc_immediate_without_carry() {
+        
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0x69, 0x01, 0x00]); // ADC #01 BRK
         assert_eq!(cpu.register_a, 0x01); // Check if A = 1
@@ -479,9 +573,11 @@ mod test {
 
     #[test]
     fn test_adc_carry_and_overflow_flags() {
+        
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x80, 0x69, 0x80, 0x00]); // LDA #80 ADC #80 BRK
         assert!(cpu.status.contains(CPUFlags::CARRY)); 
+        
         assert!(cpu.status.contains(CPUFlags::OVERFLOW));
     }
 
@@ -504,6 +600,7 @@ mod test {
 
     #[test]
     fn test_and_from_memory() {
+        
         let mut cpu = CPU::new();
         cpu.mem_write(0x10, 0x51);
 
@@ -530,6 +627,7 @@ mod test {
 
     #[test]
     fn test_lda_from_memory() {
+        
         let mut cpu = CPU::new();
         cpu.mem_write(0x10, 0x55);
 
@@ -572,9 +670,11 @@ mod test {
     fn test_inx_overflow() {
         let mut cpu = CPU::new();
         cpu.load(vec![0xe8, 0xe8, 0x00]); // Already at 0xff, +1 overflow to 0, +1 = 1
+        
         cpu.reset();
         cpu.register_x = 0xff;
         cpu.run();
         assert_eq!(cpu.register_x, 1)
     }
+
 }
