@@ -231,33 +231,7 @@ impl CPU {
     fn adc(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
         let data = self.mem_read(addr);
-
-        let mut result: u16 = self.register_a as u16 + data as u16;
-        if self.status.contains(CPUFlags::CARRY) {
-            
-            result += 1;
-        }
-
-        if result > 0xff {
-            self.status.insert(CPUFlags::CARRY);
-            
-        } else {
-            self.status.remove(CPUFlags::CARRY);
-            
-        }
-
-        let result = result as u8;
-        // (M^result)&(N^result)&0x80 
-        // If the sign of both inputs is different from result
-        if (self.register_a ^ result) & (data ^ result) & 0x80 != 0 {
-            self.status.insert(CPUFlags::OVERFLOW);
-        } else {
-            self.status.remove(CPUFlags::OVERFLOW);
-        }
-
-        self.register_a = result as u8;
-
-        self.update_zero_and_negative_flags(self.register_a);
+        self.add_to_acc_with_carry(data);
     }   
 
     // Logical AND
@@ -317,12 +291,19 @@ impl CPU {
     }
 
     fn iny(&mut self) {
-        
         self.register_y = self.register_y.wrapping_add(1);
         
-        
         self.update_zero_and_negative_flags(self.register_y);
-        
+    }
+
+    fn sbc(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let data = self.mem_read(addr);
+        // A - B - (1 - C) 
+        // A + (-B) + C - 1
+        // A + !B + 1 + C - 1
+        // A + !B + C
+        self.add_to_acc_with_carry(!data)
     }
 
     fn sta(&mut self, mode: &AddressingMode) {
@@ -372,8 +353,33 @@ impl CPU {
         return 0
     }
 
-    // BCC Check if bit is off
-    // BCS Check if bit is on
+    fn add_to_acc_with_carry(&mut self, data: u8) {
+        let mut result: u16 = self.register_a as u16 + data as u16;
+        if self.status.contains(CPUFlags::CARRY) {
+            result += 1;
+        }
+
+        if result > 0xff {
+            self.status.insert(CPUFlags::CARRY);
+            
+        } else {
+            self.status.remove(CPUFlags::CARRY);
+            
+        }
+
+        let result = result as u8;
+        // (M^result)&(N^result)&0x80 
+        // If the sign of both inputs is different from result
+        if (self.register_a ^ result) & (data ^ result) & 0x80 != 0 {
+            self.status.insert(CPUFlags::OVERFLOW);
+        } else {
+            self.status.remove(CPUFlags::OVERFLOW);
+        }
+
+        self.register_a = result as u8;
+
+        self.update_zero_and_negative_flags(self.register_a);
+    }
 
     pub fn run(&mut self) {
 
@@ -506,7 +512,7 @@ impl CPU {
                 0x60 => {},
 
                 // SBC
-                0xE9 | 0xE5 | 0xF5 | 0xED | 0xFD | 0xF9 | 0xE1 | 0xF1 => {},
+                0xE9 | 0xE5 | 0xF5 | 0xED | 0xFD | 0xF9 | 0xE1 | 0xF1 => self.sbc(&opcode.mode),
 
                 // SEC
                 0x38 => self.status.insert(CPUFlags::CARRY),
@@ -539,7 +545,7 @@ impl CPU {
                 0x8A => self.txa(),
 
                 // TXS
-                0x9A  => self.register_s = self.register_x,
+                0x9A  => self.register_s = self.register_x, // No flags needed to update
 
                 // TYA
                 0x98  => self.tya(),
@@ -555,6 +561,10 @@ impl CPU {
 }
 
 
+/*
+Used the following link to test out the tests and view outputs
+https://skilldrick.github.io/easy6502/
+*/
 #[cfg(test)]
 mod test { 
     use super::*;
@@ -607,6 +617,22 @@ mod test {
         assert!(cpu.status.contains(CPUFlags::OVERFLOW));
     }
 
+    #[test]
+    fn test_sbc_immediate_without_carry() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xE9, 0x01, 0x00]); // SBC #01 BRK
+
+        assert_eq!(cpu.register_a, 0xFE); // Check if A = -2
+        assert!(!cpu.status.contains(CPUFlags::ZERO)); // Check the Z flag is off
+        assert!(cpu.status.contains(CPUFlags::NEGATIVE)); // Check the N flag is on
+    }
+    
+    #[test]
+    fn test_sbc_immediate_with_carry() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x38, 0xE9, 0x00, 0x00]); // SEC SBC #00 BRK
+        assert_eq!(cpu.register_a, 0x00); // Check if A = 0
+    }
 
     #[test]
     fn test_and_immediate() {
