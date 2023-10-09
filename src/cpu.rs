@@ -227,7 +227,6 @@ impl CPU {
 
     // https://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
     // Add with Carry
-    
     fn adc(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
         let data = self.mem_read(addr);
@@ -381,6 +380,25 @@ impl CPU {
         self.update_zero_and_negative_flags(self.register_a);
     }
 
+    fn compare(&mut self, register: u8, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let data = self.mem_read(addr);
+
+        let compare = register - data;
+
+        if compare & 0b1000_0000 == 0 {
+            self.status.insert(CPUFlags::CARRY);
+        } 
+        else {
+            self.status.insert(CPUFlags::NEGATIVE);
+        }
+
+        if compare == 0 {
+            self.status.insert(CPUFlags::ZERO);
+        }
+
+    }
+
     pub fn run(&mut self) {
 
         loop {
@@ -443,13 +461,13 @@ impl CPU {
                 0xB8 => self.status.remove(CPUFlags::OVERFLOW),
 
                 // CMP
-                0xC9 | 0xC5 | 0xD5 | 0xCD | 0xDD | 0xD9 | 0xC1 | 0xD1 | 0x49 | 0x45 | 0x55 | 0x4D | 0x5D | 0x59 | 0x41 | 0x51 => {},
+                0xC9 | 0xC5 | 0xD5 | 0xCD | 0xDD | 0xD9 | 0xC1 | 0xD1 => self.compare(self.register_a, &opcode.mode),
 
                 // CPX
-                0xE0 | 0xE4 | 0xEC => {},
+                0xE0 | 0xE4 | 0xEC => self.compare(self.register_x, &opcode.mode),
 
                 // CPY
-                0xC0 | 0xC4 | 0xCC => {},
+                0xC0 | 0xC4 | 0xCC => self.compare(self.register_y, &opcode.mode),
 
                 // DEC
                 0xC6 | 0xD6 | 0xCE | 0xDE => {},
@@ -459,6 +477,9 @@ impl CPU {
 
                 // DEY       
                 0x88 => {},
+
+                // EOR
+                0x49 | 0x45 | 0x55 | 0x4D | 0x5D | 0x59 | 0x41 | 0x51  => {},
 
                 // INC
                 0xE6 | 0xF6 | 0xEE | 0xFE => {},
@@ -666,6 +687,36 @@ mod test {
         cpu.load_and_run(vec![0x90, 0x02, 0x78, 0x00]); // BCC #02 SEI BRK
         
         assert!(!cpu.status.contains(CPUFlags::INTERRUPT));
+    }
+
+    #[test]
+    fn test_cmp_greater_than() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x01, 0xc9, 0x00, 0x00]); // LDA #$01 CMP #$00 BRK
+        assert!(cpu.status.contains(CPUFlags::CARRY));
+        assert!(!cpu.status.contains(CPUFlags::ZERO));
+        assert!(!cpu.status.contains(CPUFlags::NEGATIVE));
+
+    }
+
+    #[test]
+    fn test_cmp_equal_to() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xc9, 0x00, 0x00]); // CMP #$00 BRK
+        assert!(cpu.status.contains(CPUFlags::CARRY));
+        assert!(cpu.status.contains(CPUFlags::ZERO));
+        assert!(!cpu.status.contains(CPUFlags::NEGATIVE));
+
+    }
+
+    #[test]
+    fn test_cmp_less_than() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x0FF, 0xc9, 0x00, 0x00]); // LDA #$-1 CMP #$00 BRK
+        
+        assert!(!cpu.status.contains(CPUFlags::CARRY));
+        assert!(!cpu.status.contains(CPUFlags::ZERO));
+        assert!(cpu.status.contains(CPUFlags::NEGATIVE));
     }
 
     #[test]
