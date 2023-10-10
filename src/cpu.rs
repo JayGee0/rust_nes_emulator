@@ -379,10 +379,39 @@ impl CPU {
         self.update_zero_and_negative_flags(self.register_x);
     }
 
+    // Increment Y
     fn iny(&mut self) {
         self.register_y = self.register_y.wrapping_add(1);
         
         self.update_zero_and_negative_flags(self.register_y);
+    }
+
+    fn rotate_left(&mut self, mut data: u8) -> u8 {
+        let new_carry = if data & 0x80 > 0 { 0b1 } else { 0b0 };
+        data = (data << 1) | (if self.status.contains(CPUFlags::CARRY) { 0b1 } else { 0b0 });
+        self.status.set(CPUFlags::CARRY, new_carry == 1);
+        return data;
+    }
+
+    // Rotate Left
+    fn rol(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let data = self.rotate_left(self.mem_read(addr));
+        self.mem_write(addr, data);
+    }
+
+    fn rotate_right(&mut self, mut data: u8) -> u8 {
+        let new_carry = if data & 0x01 > 0 { 0b1 } else { 0b0 };
+        data = (data >> 1) | (if self.status.contains(CPUFlags::CARRY) { 0x80 } else { 0x00 });
+        self.status.set(CPUFlags::CARRY, new_carry == 1);
+        return data;
+    }
+
+    // Rotate Right
+    fn ror(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let data = self.rotate_left(self.mem_read(addr));
+        self.mem_write(addr, data);
     }
 
     // Subtract with Carry
@@ -590,11 +619,17 @@ impl CPU {
                 // PLA
                 0x68 => {},
 
-                // ROL
-                0x2A | 0x26 | 0x36 | 0x2E | 0x3E => {},
+                // ROL ACCUMULATOR
+                0x2A => self.register_a = self.rotate_left(self.register_a),
 
+                // ROL
+                0x26 | 0x36 | 0x2E | 0x3E => self.rol(&opcode.mode),
+
+                // ROR ACCUMULATOR
+                0x6A => self.register_a = self.rotate_right(self.register_a),
+                 
                 // ROR
-                0x6A | 0x66 | 0x76 | 0x6E | 0x7E => {},
+                0x66 | 0x76 | 0x6E | 0x7E => self.ror(&opcode.mode),
 
                 // RTI
                 0x40 => {},
@@ -733,9 +768,19 @@ mod test {
     fn test_bit_clear_all() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x0F, 0x85, 0x00, 0x24, 0x00, 0x00]); // LDA #0F STA $00 BIT $00 BRK
-        assert!(!cpu.status.contains(CPUFlags::CARRY));
+        assert!(!cpu.status.contains(CPUFlags::ZERO));
         assert!(!cpu.status.contains(CPUFlags::OVERFLOW));
         assert!(!cpu.status.contains(CPUFlags::NEGATIVE));
+    }
+
+    
+    #[test]
+    fn test_bit_set_all() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0xF0, 0x85, 0x00, 0xa9, 0x0F, 0x24, 0x00, 0x00]); // LDA #F0 STA $00 LDA #0F BIT $00 BRK
+        assert!(cpu.status.contains(CPUFlags::ZERO));
+        assert!(cpu.status.contains(CPUFlags::OVERFLOW));
+        assert!(cpu.status.contains(CPUFlags::NEGATIVE));
     }
 
     #[test]
@@ -811,7 +856,7 @@ mod test {
     #[test]
     fn test_cmp_less_than() {
         let mut cpu = CPU::new();
-        cpu.load_and_run(vec![0xa9, 0x0FF, 0xc9, 0x00, 0x00]); // LDA #$-1 CMP #$00 BRK
+        cpu.load_and_run(vec![0xa9, 0xFF, 0xc9, 0x00, 0x00]); // LDA #$-1 CMP #$00 BRK
         
         assert!(!cpu.status.contains(CPUFlags::CARRY));
         assert!(!cpu.status.contains(CPUFlags::ZERO));
@@ -885,5 +930,24 @@ mod test {
         cpu.run();
         assert_eq!(cpu.register_x, 1)
     }
+
+    #[test]
+    fn test_rol() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0xFF, 0x2A, 0x00]); // LDA #$FF ROL BRK
+        
+        assert_eq!(cpu.register_a, 0xFE);
+        assert!(cpu.status.contains(CPUFlags::CARRY));
+    }
+
+    #[test]
+    fn test_rol_with_carry() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x38, 0xa9, 0x7F, 0x2A, 0x00]); // SEC, LDA #$FF ROL BRK
+        
+        assert_eq!(cpu.register_a, 0xFF);
+        assert!(!cpu.status.contains(CPUFlags::CARRY));
+    }
+
 
 }
