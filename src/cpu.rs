@@ -240,6 +240,13 @@ impl CPU {
         self.update_zero_and_negative_flags(self.register_a);
     }
 
+    // JMP - jump
+    fn jmp(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read_u16(addr);
+        self.program_counter = value;
+    }
+
     // Load Accumulator
     fn lda(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_address(mode);
@@ -247,6 +254,24 @@ impl CPU {
 
         self.register_a = value;
         self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    // Load Accumulator X
+    fn ldx(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+
+        self.register_x = value;
+        self.update_zero_and_negative_flags(self.register_x);
+    }
+
+    // Load Accumulator Y
+    fn ldy(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+
+        self.register_y = value;
+        self.update_zero_and_negative_flags(self.register_y);
     }
 
     // Transfer Accumulator to X
@@ -278,8 +303,6 @@ impl CPU {
         self.register_a = self.register_y;
         self.update_zero_and_negative_flags(self.register_a);
     }
-
-
     
     // Increment X
     fn inx(&mut self) {
@@ -491,7 +514,7 @@ impl CPU {
                 0xC8 => self.iny(),
 
                 // JMP
-                0x4C | 0x6C => {},
+                0x4C | 0x6C => self.jmp(&opcode.mode),
 
                 // JSR
                 0x20 => {},
@@ -500,10 +523,10 @@ impl CPU {
                 0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(&opcode.mode),
 
                 // LDX
-                0xA2 | 0xA6 | 0xB6 | 0xAE | 0xBE => {},
+                0xA2 | 0xA6 | 0xB6 | 0xAE | 0xBE => self.ldx(&opcode.mode),
 
                 // LDY
-                0xA0 | 0xA4 | 0xB4 | 0xAC | 0xBC => {},
+                0xA0 | 0xA4 | 0xB4 | 0xAC | 0xBC => self.ldy(&opcode.mode),
 
                 // LSR
                 0x4A | 0x46 | 0x56 | 0x4E | 0x5E => {},
@@ -696,7 +719,6 @@ mod test {
         assert!(cpu.status.contains(CPUFlags::CARRY));
         assert!(!cpu.status.contains(CPUFlags::ZERO));
         assert!(!cpu.status.contains(CPUFlags::NEGATIVE));
-
     }
 
     #[test]
