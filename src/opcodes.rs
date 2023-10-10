@@ -149,14 +149,14 @@ lazy_static! {
         EOR - Exclusive OR
         =========================
         */
-        OpCode::new(0x49, "CMP", 2, 2, AddressingMode::Immediate),
-        OpCode::new(0x45, "CMP", 2, 3, AddressingMode::ZeroPage),
-        OpCode::new(0x55, "CMP", 2, 4, AddressingMode::ZeroPage_X),
-        OpCode::new(0x4D, "CMP", 3, 4, AddressingMode::Absolute),
-        OpCode::new(0x5D, "CMP", 3, 4, AddressingMode::Absolute_X),
-        OpCode::new(0x59, "CMP", 3, 4, AddressingMode::Absolute_Y),
-        OpCode::new(0x41, "CMP", 2, 6, AddressingMode::Indirect_X),
-        OpCode::new(0x51, "CMP", 2, 5, AddressingMode::Indirect_Y),
+        OpCode::new(0x49, "EOR", 2, 2, AddressingMode::Immediate),
+        OpCode::new(0x45, "EOR", 2, 3, AddressingMode::ZeroPage),
+        OpCode::new(0x55, "EOR", 2, 4, AddressingMode::ZeroPage_X),
+        OpCode::new(0x4D, "EOR", 3, 4, AddressingMode::Absolute),
+        OpCode::new(0x5D, "EOR", 3, 4, AddressingMode::Absolute_X),
+        OpCode::new(0x59, "EOR", 3, 4, AddressingMode::Absolute_Y),
+        OpCode::new(0x41, "EOR", 2, 6, AddressingMode::Indirect_X),
+        OpCode::new(0x51, "EOR", 2, 5, AddressingMode::Indirect_Y),
 
         /*
         =========================

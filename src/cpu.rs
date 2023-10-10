@@ -240,6 +240,33 @@ impl CPU {
         self.update_zero_and_negative_flags(self.register_a);
     }
 
+    fn asl_acc(&mut self) {
+        let mut data = self.register_a;
+        data = self.shift_left(data);
+        self.register_a = data;
+    }
+
+    // Arithmetic Shift Left 
+    fn asl(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let mut data = self.mem_read(addr);
+
+        data = self.shift_left(data);
+        self.mem_write(addr, data);
+    }
+
+    fn shift_left(&mut self, mut data: u8) -> u8 {
+        if data & 0b1000_0000 > 0 {
+            self.status.insert(CPUFlags::CARRY);
+        } else {
+            self.status.remove(CPUFlags::CARRY);
+        }
+
+        data = data << 1;
+        self.update_zero_and_negative_flags(data);
+        return data;
+    }
+
     // JMP - jump
     fn jmp(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_address(mode);
@@ -441,8 +468,11 @@ impl CPU {
                 // AND
                 0x29 | 0x25 | 0x35 | 0x2D | 0x3D | 0x39 | 0x21 | 0x31 => self.and(&opcode.mode),
 
+                // ASL ACCUMULATOR
+                0x0A => self.asl_acc(),
+
                 // ASL
-                0x0A | 0x06 | 0x16 | 0x0E | 0x1E => {},
+                0x06 | 0x16 | 0x0E | 0x1E => self.asl(&opcode.mode),
 
                 // BCC
                 0x90 => self.program_counter += self.calculate_branch_offset_clear(CPUFlags::CARRY),         
@@ -660,6 +690,28 @@ mod test {
         
         assert!(cpu.status.contains(CPUFlags::OVERFLOW));
     }
+
+    #[test]
+    fn test_asl() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x42, 0x0A, 0x00]); // LDA #42 ASL A BRK
+        assert!(cpu.register_a == 0x84);
+    }
+
+    #[test]
+    fn test_asl_memory() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x42, 0x85, 0x00, 0x06, 0x00, 0x00]); // LDA #42 STA $00 ASL $00 BRK
+        assert!(cpu.mem_read(0x00) == 0x84);
+    }
+
+    #[test]
+    fn test_asl_carry() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0xFF, 0x0A, 0x00]); // LDA #42 ASL BRK
+        assert!(cpu.status.contains(CPUFlags::CARRY));
+    }
+
 
     #[test]
     fn test_sbc_immediate_without_carry() {
