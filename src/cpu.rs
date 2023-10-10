@@ -256,15 +256,19 @@ impl CPU {
     }
 
     fn shift_left(&mut self, mut data: u8) -> u8 {
-        if data & 0b1000_0000 > 0 {
-            self.status.insert(CPUFlags::CARRY);
-        } else {
-            self.status.remove(CPUFlags::CARRY);
-        }
-
+        self.status.set(CPUFlags::CARRY, data & 0b1000_0000 > 0);
         data = data << 1;
         self.update_zero_and_negative_flags(data);
         return data;
+    }
+
+    fn bit(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let data = self.mem_read(addr);
+
+        self.status.set(CPUFlags::ZERO, self.register_a & data == 0);
+        self.status.set(CPUFlags::OVERFLOW, data & 0b0100_0000 > 0);
+        self.status.set(CPUFlags::NEGATIVE, data & 0b1000_0010 > 0);
     }
 
     // JMP - jump
@@ -372,20 +376,12 @@ impl CPU {
 
     fn update_zero_and_negative_flags(&mut self, result: u8) {
         // If result=0... Set the Z (Zero) flag to 1
-        if result == 0 {
-            self.status.insert(CPUFlags::ZERO);
-        } else {
-            // If not, then set it to 0
-            self.status.remove(CPUFlags::ZERO);
-        }
+        self.status.set(CPUFlags::ZERO, result == 0);
 
         // If the 7th bit of result is set (i.e. negative number)
         // Set the N (negative) flag to 0 
-        if result & 0b1000_0000 != 0 {
-            self.status.insert(CPUFlags::NEGATIVE); 
-        } else {
-            self.status.remove(CPUFlags::NEGATIVE);
-        }
+        self.status.set(CPUFlags::NEGATIVE, result & 0b1000_0000 != 0);
+
     }
 
     fn calculate_branch_offset_clear(&mut self, condition: CPUFlags) -> u16 {
@@ -408,25 +404,14 @@ impl CPU {
             result += 1;
         }
 
-        if result > 0xff {
-            self.status.insert(CPUFlags::CARRY);
-            
-        } else {
-            self.status.remove(CPUFlags::CARRY);
-            
-        }
+        self.status.set(CPUFlags::CARRY, result > 0xFF);
 
         let result = result as u8;
         // (M^result)&(N^result)&0x80 
         // If the sign of both inputs is different from result
-        if (self.register_a ^ result) & (data ^ result) & 0x80 != 0 {
-            self.status.insert(CPUFlags::OVERFLOW);
-        } else {
-            self.status.remove(CPUFlags::OVERFLOW);
-        }
-
+        self.status.set(CPUFlags::OVERFLOW, (self.register_a ^ result) & (data ^ result) & 0x80 != 0);
+      
         self.register_a = result as u8;
-
         self.update_zero_and_negative_flags(self.register_a);
     }
 
@@ -436,17 +421,9 @@ impl CPU {
 
         let compare = register - data;
 
-        if compare & 0b1000_0000 == 0 {
-            self.status.insert(CPUFlags::CARRY);
-        } 
-        else {
-            self.status.insert(CPUFlags::NEGATIVE);
-        }
-
-        if compare == 0 {
-            self.status.insert(CPUFlags::ZERO);
-        }
-
+        self.status.set(CPUFlags::CARRY, compare & 0b1000_0000 == 0);
+        self.status.set(CPUFlags::NEGATIVE, compare & 0b1000_0000 > 0);
+        self.status.set(CPUFlags::ZERO, compare == 0);
     }
 
     pub fn run(&mut self) {
