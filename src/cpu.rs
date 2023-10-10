@@ -333,6 +333,29 @@ impl CPU {
         self.update_zero_and_negative_flags(self.register_y);
     }
 
+    fn shift_right(&mut self, mut data: u8) -> u8 {
+        self.status.set(CPUFlags::CARRY, data & 0b0000_0001 > 0);
+        data = data >> 1;
+        self.update_zero_and_negative_flags(data);
+        return data;
+    }
+
+    // Logically Shift Accumulator Right
+    fn lsr_acc(&mut self) {
+        let mut data = self.register_a;
+        data = self.shift_right(data);
+        self.register_a = data;
+    }
+
+    // Logical Shift Right 
+    fn lsr(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let mut data = self.mem_read(addr);
+
+        data = self.shift_right(data);
+        self.mem_write(addr, data);
+    }
+
     // Transfer Accumulator to X
     fn tax(&mut self) {
         self.register_x = self.register_a;
@@ -604,8 +627,10 @@ impl CPU {
                 // LDY
                 0xA0 | 0xA4 | 0xB4 | 0xAC | 0xBC => self.ldy(&opcode.mode),
 
-                // LSR
-                0x4A | 0x46 | 0x56 | 0x4E | 0x5E => {},
+                // LSR ACCUMULATOR
+                0x4A => self.lsr_acc(),
+                
+                0x46 | 0x56 | 0x4E | 0x5E => self.lsr(&opcode.mode),
 
                 // ORA
                 0x09 | 0x05 | 0x15 | 0x0D | 0x1D | 0x19 | 0x01 | 0x11 => {},
