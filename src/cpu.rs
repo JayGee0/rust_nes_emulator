@@ -268,7 +268,35 @@ impl CPU {
 
         self.status.set(CPUFlags::ZERO, self.register_a & data == 0);
         self.status.set(CPUFlags::OVERFLOW, data & 0b0100_0000 > 0);
-        self.status.set(CPUFlags::NEGATIVE, data & 0b1000_0010 > 0);
+        self.status.set(CPUFlags::NEGATIVE, data & 0b1000_0000 > 0);
+    }
+
+    // Decrement Memory
+    fn dec(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let data = self.mem_read(addr);
+        self.update_zero_and_negative_flags(data.wrapping_sub(1));
+        self.mem_write(addr, data.wrapping_sub(1));
+    }
+
+    // Decrement X
+    fn dex(&mut self) {
+        self.register_x = self.register_x.wrapping_sub(1);
+        self.update_zero_and_negative_flags(self.register_x);
+    }
+
+    // Decrement Y
+    fn dey(&mut self) {
+        self.register_y = self.register_y.wrapping_sub(1);
+        self.update_zero_and_negative_flags(self.register_y);
+    }
+
+    // Exclusive OR
+    fn eor(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let data = self.mem_read(addr);
+        self.register_a ^= data;
+        self.update_zero_and_negative_flags(self.register_a);
     }
 
     // JMP - jump
@@ -334,6 +362,14 @@ impl CPU {
         self.register_a = self.register_y;
         self.update_zero_and_negative_flags(self.register_a);
     }
+
+    // Increment Memory
+    fn inc(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let data = self.mem_read(addr);
+        self.mem_write(addr, data.wrapping_add(1));
+        self.update_zero_and_negative_flags(data.wrapping_add(1));
+    }
     
     // Increment X
     fn inx(&mut self) {
@@ -349,6 +385,7 @@ impl CPU {
         self.update_zero_and_negative_flags(self.register_y);
     }
 
+    // Subtract with Carry
     fn sbc(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_address(mode);
         let data = self.mem_read(addr);
@@ -359,16 +396,19 @@ impl CPU {
         self.add_to_acc_with_carry(!data)
     }
 
+    // Store Accumulator
     fn sta(&mut self, mode: &AddressingMode) {
         let target = self.get_operand_address(mode);
         self.mem_write(target, self.register_a);
     }
 
+    // Store X
     fn stx(&mut self, mode: &AddressingMode) {
         let target = self.get_operand_address(mode);
         self.mem_write(target, self.register_x);
     }
 
+    // Store Y
     fn sty(&mut self, mode: &AddressingMode) {
         let target = self.get_operand_address(mode);
         self.mem_write(target, self.register_y);
@@ -476,7 +516,7 @@ impl CPU {
                 0x70 => self.program_counter += self.calculate_branch_offset_set(CPUFlags::OVERFLOW),
 
                 // BIT
-                0x24 | 0x2C => {},
+                0x24 | 0x2C => self.bit(&opcode.mode),
 
                 // CLC
                 0x18 => self.status.remove(CPUFlags::CARRY),
@@ -500,19 +540,19 @@ impl CPU {
                 0xC0 | 0xC4 | 0xCC => self.compare(self.register_y, &opcode.mode),
 
                 // DEC
-                0xC6 | 0xD6 | 0xCE | 0xDE => {},
+                0xC6 | 0xD6 | 0xCE | 0xDE => self.dec(&opcode.mode),
 
                 // DEX
-                0xCA => {},
+                0xCA => self.dex(),
 
                 // DEY       
-                0x88 => {},
+                0x88 => self.dey(),
 
                 // EOR
-                0x49 | 0x45 | 0x55 | 0x4D | 0x5D | 0x59 | 0x41 | 0x51  => {},
+                0x49 | 0x45 | 0x55 | 0x4D | 0x5D | 0x59 | 0x41 | 0x51  => self.eor(&opcode.mode),
 
                 // INC
-                0xE6 | 0xF6 | 0xEE | 0xFE => {},
+                0xE6 | 0xF6 | 0xEE | 0xFE => self.inc(&opcode.mode),
 
                 // INX
                 0xE8 => self.inx(),
@@ -685,10 +725,18 @@ mod test {
     #[test]
     fn test_asl_carry() {
         let mut cpu = CPU::new();
-        cpu.load_and_run(vec![0xa9, 0xFF, 0x0A, 0x00]); // LDA #42 ASL BRK
+        cpu.load_and_run(vec![0xa9, 0xFF, 0x0A, 0x00]); // LDA #FF ASL BRK
         assert!(cpu.status.contains(CPUFlags::CARRY));
     }
 
+    #[test]
+    fn test_bit_clear_all() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x0F, 0x85, 0x00, 0x24, 0x00, 0x00]); // LDA #0F STA $00 BIT $00 BRK
+        assert!(!cpu.status.contains(CPUFlags::CARRY));
+        assert!(!cpu.status.contains(CPUFlags::OVERFLOW));
+        assert!(!cpu.status.contains(CPUFlags::NEGATIVE));
+    }
 
     #[test]
     fn test_sbc_immediate_without_carry() {
