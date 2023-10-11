@@ -250,7 +250,7 @@ lazy_static! {
         OpCode::new(0x48, "PHA", 1, 3, AddressingMode::NoneAddressing), // PHA - Push Accumulator
         OpCode::new(0x08, "PHP", 1, 3, AddressingMode::NoneAddressing), // PHP - Push Processor Status
         OpCode::new(0x68, "PLA", 1, 4, AddressingMode::NoneAddressing), // PLA - Pull Accumulator
-        OpCode::new(0x28, "CLV", 1, 4, AddressingMode::NoneAddressing), // PLP - Pull Processor Status
+        OpCode::new(0x28, "PLP", 1, 4, AddressingMode::NoneAddressing), // PLP - Pull Processor Status
 
         /*
         =========================

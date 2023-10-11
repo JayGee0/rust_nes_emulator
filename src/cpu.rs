@@ -21,6 +21,7 @@ pub struct CPU {
     pub register_y: u8,
     
     pub register_s: u8,
+
     /*
     NVss DIZC
     7_______0
@@ -456,6 +457,19 @@ impl CPU {
         self.update_zero_and_negative_flags(self.register_a);
     }
 
+    fn php(&mut self) {
+        self.status.remove(CPUFlags::BREAK2);
+        self.status.insert(CPUFlags::BREAK1);
+        self.push_to_stack(self.status.bits());
+        
+    }
+
+    fn plp(&mut self) {
+        self.status = CPUFlags::from_bits(self.pop_stack()).unwrap();
+        self.status.remove(CPUFlags::BREAK1);
+        self.status.insert(CPUFlags::BREAK2); // Indicate we're not in interrupt
+    }
+
     fn rotate_left(&mut self, mut data: u8) -> u8 {
         let new_carry = if data & 0x80 > 0 { 0b1 } else { 0b0 };
         data = (data << 1) | (if self.status.contains(CPUFlags::CARRY) { 0b1 } else { 0b0 });
@@ -486,6 +500,8 @@ impl CPU {
 
     fn rti(&mut self) {
         self.status = CPUFlags::from_bits(self.pop_stack()).unwrap();
+        self.status.remove(CPUFlags::BREAK1);
+        self.status.insert(CPUFlags::BREAK2);
         self.program_counter = self.pop_stack_u16();
     }
 
@@ -695,10 +711,13 @@ impl CPU {
                 0x48 => self.push_to_stack(self.register_a),
 
                 // PHP
-                0x08 => self.push_to_stack(self.status.bits()),
+                0x08 => self.php(),
 
                 // PLA
                 0x68 => self.pla(),
+
+                // PLP
+                0x28 => self.plp(),
 
                 // ROL ACCUMULATOR
                 0x2A => self.register_a = self.rotate_left(self.register_a),
