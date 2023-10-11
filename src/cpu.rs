@@ -225,6 +225,32 @@ impl CPU {
 
     }
 
+    fn push_to_stack(&mut self, data: u8) {
+        self.mem_write(0x100 + self.register_s as u16, data); // 0x100 + s because stack is located in this page
+        self.register_s = self.register_s.wrapping_sub(1);
+    }
+
+    fn push_to_stack_u16(&mut self, data: u16) {
+        let hi = (data >> 8) as u8;
+        let lo = (data & 0xFF) as u8;
+
+        self.push_to_stack(hi);
+        self.push_to_stack(lo);
+    }
+
+    fn pop_stack(&mut self) -> u8 {
+        self.register_s = self.register_s.wrapping_add(1);
+        self.mem_read(0x100 + self.register_s as u16)
+    }
+
+    fn pop_stack_u16(&mut self) -> u16 {
+        let lo = self.pop_stack() as u16;
+        let hi = (self.pop_stack() as u16) << 8;
+
+        hi | lo
+    }
+
+
     // https://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
     // Add with Carry
     fn adc(&mut self, mode: &AddressingMode) {
@@ -304,6 +330,12 @@ impl CPU {
         let addr = self.get_operand_address(mode);
         let value = self.mem_read_u16(addr);
         self.program_counter = value;
+    }
+
+    fn jsr(&mut self, mode: &AddressingMode) {
+        self.push_to_stack_u16(self.program_counter + 2 - 1);
+        let addr = self.get_operand_address(mode);
+        self.program_counter = addr;
     }
 
     // Load Accumulator
@@ -409,6 +441,21 @@ impl CPU {
         self.update_zero_and_negative_flags(self.register_y);
     }
 
+    // Logical Inclusive OR
+    fn ora(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let data = self.mem_read(addr);
+        self.register_a |= data;
+
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    // Pull Accumulator
+    fn pla(&mut self) {
+        self.register_a = self.pop_stack();
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+
     fn rotate_left(&mut self, mut data: u8) -> u8 {
         let new_carry = if data & 0x80 > 0 { 0b1 } else { 0b0 };
         data = (data << 1) | (if self.status.contains(CPUFlags::CARRY) { 0b1 } else { 0b0 });
@@ -435,6 +482,15 @@ impl CPU {
         let addr = self.get_operand_address(mode);
         let data = self.rotate_left(self.mem_read(addr));
         self.mem_write(addr, data);
+    }
+
+    fn rti(&mut self) {
+        self.status = CPUFlags::from_bits(self.pop_stack()).unwrap();
+        self.program_counter = self.pop_stack_u16();
+    }
+
+    fn rts(&mut self) {
+        self.program_counter = self.pop_stack_u16() + 1;
     }
 
     // Subtract with Carry
@@ -616,7 +672,7 @@ impl CPU {
                 0x4C | 0x6C => self.jmp(&opcode.mode),
 
                 // JSR
-                0x20 => {},
+                0x20 => self.jsr(&opcode.mode),
 
                 // LDA
                 0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(&opcode.mode),
@@ -633,16 +689,16 @@ impl CPU {
                 0x46 | 0x56 | 0x4E | 0x5E => self.lsr(&opcode.mode),
 
                 // ORA
-                0x09 | 0x05 | 0x15 | 0x0D | 0x1D | 0x19 | 0x01 | 0x11 => {},
+                0x09 | 0x05 | 0x15 | 0x0D | 0x1D | 0x19 | 0x01 | 0x11 => self.ora(&opcode.mode),
 
                 // PHA
-                0x48 => {},
+                0x48 => self.push_to_stack(self.register_a),
 
                 // PHP
-                0x08 => {},
+                0x08 => self.push_to_stack(self.status.bits()),
 
                 // PLA
-                0x68 => {},
+                0x68 => self.pla(),
 
                 // ROL ACCUMULATOR
                 0x2A => self.register_a = self.rotate_left(self.register_a),
@@ -657,10 +713,10 @@ impl CPU {
                 0x66 | 0x76 | 0x6E | 0x7E => self.ror(&opcode.mode),
 
                 // RTI
-                0x40 => {},
+                0x40 => self.rti(),
 
                 // RTS
-                0x60 => {},
+                0x60 => self.rts(),
 
                 // SBC
                 0xE9 | 0xE5 | 0xF5 | 0xED | 0xFD | 0xF9 | 0xE1 | 0xF1 => self.sbc(&opcode.mode),
