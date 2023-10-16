@@ -1,4 +1,6 @@
-use crate::opcodes::OPCODES_MAP;
+use std::collections::HashMap;
+
+use crate::opcodes;
 use bitflags::bitflags;
 
 bitflags! {
@@ -70,35 +72,35 @@ impl CPU {
             register_x: 0,
             register_y: 0,
             register_s: 0xFF,
-            status: CPUFlags::empty(),
+            status:  CPUFlags::from_bits_truncate(0b100100),
             
             program_counter: 0,
             memory: [0; 0xFFFF],
             
         }
     }
-
-    fn mem_read(&self, addr: u16) -> u8 {
+    
+    pub fn mem_read(&self, addr: u16) -> u8 {
         self.memory[addr as usize]
         
     }
 
-    fn mem_write(&mut self, addr: u16, data: u8) {
+    pub fn mem_write(&mut self, addr: u16, data: u8) {
         self.memory[addr as usize] = data;
         
     }
 
-    fn mem_read_u16(&mut self, pos: u16) -> u16 {
+    pub fn mem_read_u16(&mut self, pos: u16) -> u16 {
         let lo = self.mem_read(pos) as u16; // Reading the data from pos
         let hi = self.mem_read(pos + 1) as u16; // Reading the next data
         // Shifting the next data left by 8 bits and replacing 
         
         // The empty 0s with the bits from the first 8 bits
-        
+
         (hi << 8) | (lo as u16) 
     }
 
-    fn mem_write_u16(&mut self, pos: u16, data: u16) {
+    pub fn mem_write_u16(&mut self, pos: u16, data: u16) {
         let hi = (data >> 8) as u8; 
         let lo = (data & 0xFF) as u8;
         self.mem_write(pos, lo);
@@ -111,7 +113,7 @@ impl CPU {
         self.register_y = 0;
         
         self.register_s = 0xFF;
-        self.status = CPUFlags::empty();
+        self.status = CPUFlags::from_bits_truncate(0b100100);
         
         self.program_counter = self.mem_read_u16(0xFFFC);
     }
@@ -123,10 +125,8 @@ impl CPU {
     }
 
     pub fn load(&mut self, program: Vec<u8>) {
-        self.memory[0x8000 .. (0x8000 + program.len())].copy_from_slice(&program[..]);
-        
-        
-        self.mem_write_u16(0xFFFC, 0x8000);
+        self.memory[0x0600 .. (0x0600 + program.len())].copy_from_slice(&program[..]);
+        self.mem_write_u16(0xFFFC, 0x0600);
     }
 
     // Where am I addressing data from?
@@ -327,16 +327,21 @@ impl CPU {
     }
 
     // JMP - jump
-    fn jmp(&mut self, mode: &AddressingMode) {
-        let addr = self.get_operand_address(mode);
+    fn jmp(&mut self, flag: bool) {
+         // Indirect indexing
+        let addr = self.get_operand_address(&AddressingMode::Absolute);
         let value = self.mem_read_u16(addr);
-        self.program_counter = value;
+        if flag == true {
+            self.program_counter = addr - 2;
+        } else {
+            self.program_counter = value - 2;
+        }
     }
 
-    fn jsr(&mut self, mode: &AddressingMode) {
+    fn jsr(&mut self) {
         self.push_to_stack_u16(self.program_counter + 2 - 1);
-        let addr = self.get_operand_address(mode);
-        self.program_counter = addr;
+        let addr = self.mem_read_u16(self.program_counter);
+        self.program_counter = addr - 2;
     }
 
     // Load Accumulator
@@ -550,14 +555,24 @@ impl CPU {
 
     fn calculate_branch_offset_clear(&mut self, condition: CPUFlags) -> u16 {
         if !self.status.contains(condition) {
-            return self.mem_read(self.program_counter+1) as u16
+            let data = self.mem_read(self.program_counter);
+            if 0x80 & data == 0 {
+                return data as u16
+            } else {
+                return (data as u16) | (0xFF) << 8
+            }
         }
         return 0
     }
 
     fn calculate_branch_offset_set(&mut self, condition: CPUFlags) -> u16 {
         if self.status.contains(condition) {
-            return self.mem_read(self.program_counter+1) as u16
+            let data = self.mem_read(self.program_counter);
+            if 0x80 & data == 0 {
+                return data as u16
+            } else {
+                return (data as u16) | (0xFF) << 8
+            }        
         }
         return 0
     }
@@ -583,7 +598,7 @@ impl CPU {
         let addr = self.get_operand_address(mode);
         let data = self.mem_read(addr);
 
-        let compare = register - data;
+        let compare = register.wrapping_sub(data);
 
         self.status.set(CPUFlags::CARRY, compare & 0b1000_0000 == 0);
         self.status.set(CPUFlags::NEGATIVE, compare & 0b1000_0000 > 0);
@@ -591,9 +606,16 @@ impl CPU {
     }
 
     pub fn run(&mut self) {
+        self.run_with_callback(|_| {});
+    }
 
+    pub fn run_with_callback<F>(&mut self, mut callback: F) 
+    where F: FnMut(&mut CPU)
+     {
+        let ref opcodes: HashMap<u8, &'static opcodes::OpCode> = *opcodes::OPCODES_MAP;
         loop {
-            let opcode = OPCODES_MAP.get(&self.mem_read(self.program_counter)).unwrap();
+            callback(self);
+            let opcode = opcodes.get(&self.mem_read(self.program_counter)).unwrap();
             self.program_counter += 1;
 
             match opcode.code {
@@ -616,28 +638,28 @@ impl CPU {
                 0x06 | 0x16 | 0x0E | 0x1E => self.asl(&opcode.mode),
 
                 // BCC
-                0x90 => self.program_counter += self.calculate_branch_offset_clear(CPUFlags::CARRY),         
+                0x90 => self.program_counter = self.program_counter.wrapping_add(self.calculate_branch_offset_clear(CPUFlags::CARRY)),         
 
                 // BCS
-                0xB0 => self.program_counter += self.calculate_branch_offset_set(CPUFlags::CARRY),
+                0xB0 => self.program_counter = self.program_counter.wrapping_add(self.calculate_branch_offset_set(CPUFlags::CARRY)),
 
                 // BEQ
-                0xF0 => self.program_counter += self.calculate_branch_offset_set(CPUFlags::ZERO),
+                0xF0 => self.program_counter = self.program_counter.wrapping_add(self.calculate_branch_offset_set(CPUFlags::ZERO)),
 
                 // BMI
-                0x30 => self.program_counter += self.calculate_branch_offset_set(CPUFlags::NEGATIVE),
+                0x30 => self.program_counter = self.program_counter.wrapping_add(self.calculate_branch_offset_set(CPUFlags::NEGATIVE)),
 
                 // BNE
-                0xD0 => self.program_counter += self.calculate_branch_offset_clear(CPUFlags::ZERO),
+                0xD0 => self.program_counter = self.program_counter.wrapping_add(self.calculate_branch_offset_clear(CPUFlags::ZERO)),
 
                 // BPL
-                0x10 => self.program_counter += self.calculate_branch_offset_clear(CPUFlags::NEGATIVE),
+                0x10 => self.program_counter = self.program_counter.wrapping_add(self.calculate_branch_offset_clear(CPUFlags::NEGATIVE)),
 
                 // BVC
-                0x50 => self.program_counter += self.calculate_branch_offset_clear(CPUFlags::OVERFLOW),
+                0x50 => self.program_counter = self.program_counter.wrapping_add(self.calculate_branch_offset_clear(CPUFlags::OVERFLOW)),
 
                 // BVS
-                0x70 => self.program_counter += self.calculate_branch_offset_set(CPUFlags::OVERFLOW),
+                0x70 => self.program_counter = self.program_counter.wrapping_add(self.calculate_branch_offset_set(CPUFlags::OVERFLOW)),
 
                 // BIT
                 0x24 | 0x2C => self.bit(&opcode.mode),
@@ -684,11 +706,14 @@ impl CPU {
                 // INY
                 0xC8 => self.iny(),
 
-                // JMP
-                0x4C | 0x6C => self.jmp(&opcode.mode),
+                // JMP ABSOLUTE
+                0x4C => self.jmp(true),
+                
+                // JMP INDIRECT
+                0x6C => self.jmp(false),
 
                 // JSR
-                0x20 => self.jsr(&opcode.mode),
+                0x20 => self.jsr(),
 
                 // LDA
                 0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(&opcode.mode),

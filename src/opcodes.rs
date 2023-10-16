@@ -13,11 +13,11 @@ impl OpCode {
     pub fn new(code: u8, mnemonic: &'static str, len: u8, cycles: u8, mode: AddressingMode) -> Self {
 
         OpCode {
-            code: code,
-            mnemonic: mnemonic,
-            len: len,
-            cycles: cycles,
-            mode: mode
+           code,
+            mnemonic,
+            len,
+            cycles,
+            mode
         }
     }
 }
@@ -176,10 +176,10 @@ lazy_static! {
         JMP - Jump
         =========================
         */
-        OpCode::new(0x4C, "JMP", 3, 3, AddressingMode::NoneAddressing), 
-        OpCode::new(0x6C, "JMP", 3, 5, AddressingMode::NoneAddressing),
+        OpCode::new(0x4C, "JMP", 3, 3, AddressingMode::Absolute), 
+        OpCode::new(0x6C, "JMP", 3, 5, AddressingMode::NoneAddressing), // Indirect
 
-        OpCode::new(0x20, "JSR", 3, 6, AddressingMode::NoneAddressing),
+        OpCode::new(0x20, "JSR", 3, 6, AddressingMode::Absolute),
         
         /*
         =========================
