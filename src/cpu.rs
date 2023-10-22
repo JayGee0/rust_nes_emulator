@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::bus::Bus;
 use crate::opcodes;
 use bitflags::bitflags;
 
@@ -40,9 +41,7 @@ pub struct CPU {
      */
     pub status: CPUFlags,
     pub program_counter: u16,
-    memory: [u8; 0xFFFF] // Array of u8 of length 0xFFFF
-    
-    
+    pub bus: Bus,
 }
 
 #[derive(Debug)]
@@ -64,33 +63,12 @@ pub enum AddressingMode {
     NoneAddressing
 }
 
-impl CPU {
-    pub fn new() -> Self {
+pub trait Memory {
+    fn mem_read(&self, addr: u16) -> u8;
 
-        CPU {
-            register_a: 0,
-            register_x: 0,
-            register_y: 0,
-            register_s: 0xFF,
-            status:  CPUFlags::from_bits_truncate(0b100100),
-            
-            program_counter: 0,
-            memory: [0; 0xFFFF],
-            
-        }
-    }
-    
-    pub fn mem_read(&self, addr: u16) -> u8 {
-        self.memory[addr as usize]
-        
-    }
+    fn mem_write(&mut self, addr: u16, data: u8);
 
-    pub fn mem_write(&mut self, addr: u16, data: u8) {
-        self.memory[addr as usize] = data;
-        
-    }
-
-    pub fn mem_read_u16(&mut self, pos: u16) -> u16 {
+    fn mem_read_u16(&mut self, pos: u16) -> u16 {
         let lo = self.mem_read(pos) as u16; // Reading the data from pos
         let hi = self.mem_read(pos + 1) as u16; // Reading the next data
         // Shifting the next data left by 8 bits and replacing 
@@ -100,22 +78,57 @@ impl CPU {
         (hi << 8) | (lo as u16) 
     }
 
-    pub fn mem_write_u16(&mut self, pos: u16, data: u16) {
+    fn mem_write_u16(&mut self, pos: u16, data: u16) {
         let hi = (data >> 8) as u8; 
         let lo = (data & 0xFF) as u8;
         self.mem_write(pos, lo);
         self.mem_write(pos + 1, hi)
     }
+}
+
+impl Memory for CPU {
+    fn mem_read(&self, addr: u16) -> u8 {
+        self.bus.mem_read(addr)
+    }
+
+    fn mem_write(&mut self, addr: u16, data: u8) {
+        self.bus.mem_write(addr, data);
+    }
+
+    fn mem_read_u16(&mut self, pos: u16) -> u16 {
+        self.bus.mem_read_u16(pos)
+    }
+
+    fn mem_write_u16(&mut self, pos: u16, data: u16) {
+        self.bus.mem_write_u16(pos, data);
+    }
+}
+
+impl CPU {
+    pub fn new(bus: Bus) -> Self {
+
+        CPU {
+            register_a: 0,
+            register_x: 0,
+            register_y: 0,
+            register_s: 0xFF,
+            status:  CPUFlags::from_bits_truncate(0b100100),
+            
+            program_counter: 0,
+            bus
+            
+        }
+    }   
 
     pub fn reset(&mut self) {
         self.register_a = 0;
         self.register_x = 0;
         self.register_y = 0;
         
-        self.register_s = 0xFF;
+        self.register_s = 0xFD;
         self.status = CPUFlags::from_bits_truncate(0b100100);
         
-        self.program_counter = self.mem_read_u16(0xFFFC);
+        self.program_counter = 0x0600;
     }
 
     pub fn load_and_run(&mut self, program: Vec<u8>) {
@@ -125,8 +138,10 @@ impl CPU {
     }
 
     pub fn load(&mut self, program: Vec<u8>) {
-        self.memory[0x0600 .. (0x0600 + program.len())].copy_from_slice(&program[..]);
-        self.mem_write_u16(0xFFFC, 0x0600);
+        for i in 0..(program.len() as u16) {
+            self.mem_write(0x0600 + i, program[i as usize]);
+        }
+        //self.mem_write_u16(0xFFFC, 0x0600);
     }
 
     // Where am I addressing data from?
@@ -138,9 +153,6 @@ impl CPU {
             AddressingMode::Immediate => self.program_counter,
 
             // Address data from the next 8 bits only (the first 256 bytes of memory)
-            
-            
-            
             // Good for conserving speed and memory
             
             // e.g. LDA $00 loads accumulator from $0000
@@ -818,11 +830,14 @@ https://skilldrick.github.io/easy6502/
 */
 #[cfg(test)]
 mod test { 
+    use crate::cartridge;
+
     use super::*;
     
     #[test]
     fn test_set_flags() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0x38, 0xF8, 0x78, 0x00]); // SEC SED SEI BRK
         assert!(cpu.status.contains(CPUFlags::CARRY));
         
@@ -832,7 +847,8 @@ mod test {
 
     #[test]
     fn test_clear_flags() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0x38, 0xF8, 0x78, 0x18, 0xD8, 0x58, 0x00]); // SEC SED SEI CLC CLD CLI BRK
         
         assert!(!cpu.status.contains(CPUFlags::CARRY));
@@ -843,8 +859,8 @@ mod test {
 
     #[test]
     fn test_adc_immediate_without_carry() {
-        
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0x69, 0x01, 0x00]); // ADC #01 BRK
         assert_eq!(cpu.register_a, 0x01); // Check if A = 1
         assert!(!cpu.status.contains(CPUFlags::ZERO)); // Check the Z flag is off
@@ -853,15 +869,16 @@ mod test {
     
     #[test]
     fn test_adc_immediate_with_carry() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0x38, 0x69, 0x01, 0x00]); // SEC ADC #01 BRK
         assert_eq!(cpu.register_a, 0x02); // Check if A = 2
     }
 
     #[test]
     fn test_adc_carry_and_overflow_flags() {
-        
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa9, 0x80, 0x69, 0x80, 0x00]); // LDA #80 ADC #80 BRK
         assert!(cpu.status.contains(CPUFlags::CARRY)); 
         
@@ -870,28 +887,32 @@ mod test {
 
     #[test]
     fn test_asl() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa9, 0x42, 0x0A, 0x00]); // LDA #42 ASL A BRK
         assert!(cpu.register_a == 0x84);
     }
 
     #[test]
     fn test_asl_memory() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa9, 0x42, 0x85, 0x00, 0x06, 0x00, 0x00]); // LDA #42 STA $00 ASL $00 BRK
         assert!(cpu.mem_read(0x00) == 0x84);
     }
 
     #[test]
     fn test_asl_carry() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa9, 0xFF, 0x0A, 0x00]); // LDA #FF ASL BRK
         assert!(cpu.status.contains(CPUFlags::CARRY));
     }
 
     #[test]
     fn test_bit_clear_all() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa9, 0x0F, 0x85, 0x00, 0x24, 0x00, 0x00]); // LDA #0F STA $00 BIT $00 BRK
         assert!(!cpu.status.contains(CPUFlags::ZERO));
         assert!(!cpu.status.contains(CPUFlags::OVERFLOW));
@@ -901,7 +922,8 @@ mod test {
     
     #[test]
     fn test_bit_set_all() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa9, 0xF0, 0x85, 0x00, 0xa9, 0x0F, 0x24, 0x00, 0x00]); // LDA #F0 STA $00 LDA #0F BIT $00 BRK
         assert!(cpu.status.contains(CPUFlags::ZERO));
         assert!(cpu.status.contains(CPUFlags::OVERFLOW));
@@ -910,7 +932,8 @@ mod test {
 
     #[test]
     fn test_sbc_immediate_without_carry() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xE9, 0x01, 0x00]); // SBC #01 BRK
 
         assert_eq!(cpu.register_a, 0xFE); // Check if A = -2
@@ -920,14 +943,16 @@ mod test {
     
     #[test]
     fn test_sbc_immediate_with_carry() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0x38, 0xE9, 0x00, 0x00]); // SEC SBC #00 BRK
         assert_eq!(cpu.register_a, 0x00); // Check if A = 0
     }
 
     #[test]
     fn test_and_immediate() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa9, 0x05, 0x29, 0x01, 0x00]); // Load 5 into acc and AND with 1
         assert_eq!(cpu.register_a, 0x01); // Check if A = 1
         assert!(!cpu.status.contains(CPUFlags::ZERO)); // Check the Z flag is off
@@ -936,7 +961,8 @@ mod test {
     
     #[test]
     fn test_and_zero_flag() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa9, 0x05, 0x29, 0x00, 0x00]); // Load 5 into acc and AND with 0
         assert!(cpu.status.contains(CPUFlags::ZERO)) // Check Z flag is on
     }
@@ -944,7 +970,8 @@ mod test {
     #[test]
     fn test_and_from_memory() {
         
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.mem_write(0x10, 0x51);
 
         cpu.load_and_run(vec![0xa9, 0x55, 0x25, 0x10, 0x00]); // Load 5 into acc and AND with location in 
@@ -952,16 +979,27 @@ mod test {
     }
 
     #[test]
-    fn test_bcc() {
-        let mut cpu = CPU::new();
-        cpu.load_and_run(vec![0x90, 0x02, 0x78, 0x00]); // BCC #02 SEI BRK
+    fn test_bcc_fail_branch() {
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
+        cpu.load_and_run(vec![0x90, 0x01, 0x78, 0x00]); // BCC #01 SEI BRK
+        
+        assert!(cpu.status.contains(CPUFlags::INTERRUPT));
+    }
+
+    #[test]
+    fn test_bcc_branch() {
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
+        cpu.load_and_run(vec![0x18, 0x90, 0x01, 0x78, 0x00]); // CLC BCC #01 SEI BRK
         
         assert!(!cpu.status.contains(CPUFlags::INTERRUPT));
     }
 
     #[test]
     fn test_cmp_greater_than() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa9, 0x01, 0xc9, 0x00, 0x00]); // LDA #$01 CMP #$00 BRK
         assert!(cpu.status.contains(CPUFlags::CARRY));
         assert!(!cpu.status.contains(CPUFlags::ZERO));
@@ -970,7 +1008,8 @@ mod test {
 
     #[test]
     fn test_cmp_equal_to() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xc9, 0x00, 0x00]); // CMP #$00 BRK
         assert!(cpu.status.contains(CPUFlags::CARRY));
         assert!(cpu.status.contains(CPUFlags::ZERO));
@@ -980,7 +1019,8 @@ mod test {
 
     #[test]
     fn test_cmp_less_than() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa9, 0xFF, 0xc9, 0x00, 0x00]); // LDA #$-1 CMP #$00 BRK
         
         assert!(!cpu.status.contains(CPUFlags::CARRY));
@@ -990,7 +1030,8 @@ mod test {
 
     #[test]
     fn test_0xa9_lda_immediate_load_data() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa9, 0x05, 0x00]); // Load in 5 into the Accumulator
         assert_eq!(cpu.register_a, 0x05); // Check if A = 5
         assert!(!cpu.status.contains(CPUFlags::ZERO)); // Check the Z flag is off
@@ -999,7 +1040,8 @@ mod test {
     
     #[test]
     fn test_0xa9_lda_zero_flag() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa9, 0x00, 0x00]); // Load 0 into accumulator
         assert!(cpu.status.contains(CPUFlags::ZERO)) // Check Z flag is on
     }
@@ -1007,7 +1049,8 @@ mod test {
     #[test]
     fn test_lda_from_memory() {
         
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.mem_write(0x10, 0x55);
 
         cpu.load_and_run(vec![0xa5, 0x10, 0x00]); // LDA from 0x10
@@ -1016,7 +1059,8 @@ mod test {
 
     #[test]
     fn test_sta() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.register_a = 0x60;
 
         cpu.load(vec![0x85, 0x10, 0x00]); // STA to 0x10
@@ -1029,7 +1073,8 @@ mod test {
 
     #[test]
     fn test_0xaa_tax_move_a_to_x() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load(vec![0xaa, 0x00]); // TAX
         cpu.reset();
         cpu.register_a = 5;
@@ -1039,7 +1084,8 @@ mod test {
 
     #[test]
     fn test_5_ops_working_together() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa9, 0xc0, 0xaa, 0xe8, 0x00]); // Load C0 into A, transfer to X, then increment
     
         assert_eq!(cpu.register_x, 0xc1) // 0xc0 + 1 = 0xc1
@@ -1047,7 +1093,8 @@ mod test {
 
     #[test]
     fn test_inx_overflow() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load(vec![0xe8, 0xe8, 0x00]); // Already at 0xff, +1 overflow to 0, +1 = 1
         
         cpu.reset();
@@ -1058,7 +1105,8 @@ mod test {
 
     #[test]
     fn test_rol() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0xa9, 0xFF, 0x2A, 0x00]); // LDA #$FF ROL BRK
         
         assert_eq!(cpu.register_a, 0xFE);
@@ -1067,7 +1115,8 @@ mod test {
 
     #[test]
     fn test_rol_with_carry() {
-        let mut cpu = CPU::new();
+        let bus = Bus::new(cartridge::test::test_rom());
+        let mut cpu = CPU::new(bus);
         cpu.load_and_run(vec![0x38, 0xa9, 0x7F, 0x2A, 0x00]); // SEC, LDA #$FF ROL BRK
         
         assert_eq!(cpu.register_a, 0xFF);

@@ -2,12 +2,14 @@
 
 pub mod cpu;
 pub mod opcodes;
+pub mod bus;
+mod cartridge;
 use rand::Rng;
 #[macro_use]
 extern crate lazy_static;
 use sdl2::{pixels::{PixelFormatEnum, Color}, EventPump, event::Event, keyboard::Keycode};
 
-use crate::cpu::CPU;
+use crate::{cpu::{CPU, Memory}, bus::Bus};
 
 fn main() {
 
@@ -34,7 +36,8 @@ fn main() {
         0xea, 0xca, 0xd0, 0xfb, 0x60
     ];
 
-    let mut cpu = CPU::new();
+    let bus = Bus::new(cartridge::test::test_rom());
+    let mut cpu = CPU::new(bus);
 
     // Init sdl2
     let sdl_context = sdl2::init().unwrap();
