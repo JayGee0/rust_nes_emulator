@@ -112,7 +112,7 @@ impl CPU {
             register_x: 0,
             register_y: 0,
             register_s: 0xFF,
-            status:  CPUFlags::from_bits_truncate(0b100100),
+            status:  CPUFlags::from_bits_truncate(0b0011_0100),
             
             program_counter: 0,
             bus
@@ -126,9 +126,9 @@ impl CPU {
         self.register_y = 0;
         
         self.register_s = 0xFD;
-        self.status = CPUFlags::from_bits_truncate(0b100100);
+        self.status = CPUFlags::from_bits_truncate(0b0011_0100);
         
-        self.program_counter = 0x0600;
+        self.program_counter = 0x8600;
     }
 
     pub fn load_and_run(&mut self, program: Vec<u8>) {
@@ -139,7 +139,7 @@ impl CPU {
 
     pub fn load(&mut self, program: Vec<u8>) {
         for i in 0..(program.len() as u16) {
-            self.mem_write(0x0600 + i, program[i as usize]);
+            self.mem_write(0x8600 + i, program[i as usize]);
         }
         //self.mem_write_u16(0xFFFC, 0x0600);
     }
@@ -171,9 +171,7 @@ impl CPU {
                 addr
             },
 
-            // Same as ZeroPage_X except with Y this time. Can only be used with LDX and SDX
-            
-            
+            // Same as ZeroPage_X except with Y this time. Can only be used with LDX and SDX            
             // e.g. LDX $10,Y
             
             AddressingMode::ZeroPage_Y => {
@@ -193,7 +191,7 @@ impl CPU {
             },
 
             // Same as Absolute, however with adding the value from register_y
-            
+
             // e.g. LDA $1000,Y
             
             AddressingMode::Absolute_Y => {
@@ -982,18 +980,18 @@ mod test {
     fn test_bcc_fail_branch() {
         let bus = Bus::new(cartridge::test::test_rom());
         let mut cpu = CPU::new(bus);
-        cpu.load_and_run(vec![0x90, 0x01, 0x78, 0x00]); // BCC #01 SEI BRK
+        cpu.load_and_run(vec![0x38, 0x90, 0x02, 0xa9, 0x05, 0x00]); // BCC #02 LDA #$0x05 BRK
         
-        assert!(cpu.status.contains(CPUFlags::INTERRUPT));
+        assert_eq!(cpu.register_a, 0x05);
     }
 
     #[test]
     fn test_bcc_branch() {
         let bus = Bus::new(cartridge::test::test_rom());
         let mut cpu = CPU::new(bus);
-        cpu.load_and_run(vec![0x18, 0x90, 0x01, 0x78, 0x00]); // CLC BCC #01 SEI BRK
+        cpu.load_and_run(vec![0x18, 0x90, 0x02, 0xa9, 0x05, 0x00]); // CLC BCC #02 LDA #$0x05 BRK
         
-        assert!(!cpu.status.contains(CPUFlags::INTERRUPT));
+        assert_eq!(cpu.register_a, 0x00);
     }
 
     #[test]

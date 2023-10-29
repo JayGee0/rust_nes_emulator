@@ -4,6 +4,8 @@ pub mod cpu;
 pub mod opcodes;
 pub mod bus;
 mod cartridge;
+use std::{fs::{self, File}, io::Read, time::Duration};
+
 use rand::Rng;
 #[macro_use]
 extern crate lazy_static;
@@ -36,8 +38,6 @@ fn main() {
         0xea, 0xca, 0xd0, 0xfb, 0x60
     ];
 
-    let bus = Bus::new(cartridge::test::test_rom());
-    let mut cpu = CPU::new(bus);
 
     // Init sdl2
     let sdl_context = sdl2::init().unwrap();
@@ -55,11 +55,18 @@ fn main() {
     let mut texture = creator
                         .create_texture_target(PixelFormatEnum::RGB24, 32, 32).unwrap();
 
-    cpu.load(game_code);
-    cpu.reset();
 
     let mut screen_state = [0 as u8; 32 * 3 * 32];
     let mut rng = rand::thread_rng();
+
+
+    let bytes: Vec<u8> = std::fs::read("snake.nes").unwrap();
+
+    let rom = cartridge::Rom::new(&bytes).unwrap();
+    let bus = Bus::new(rom);
+    let mut cpu = CPU::new(bus);
+    cpu.reset();
+
 
     cpu.run_with_callback(move |cpu| {
         handle_user_input(cpu, &mut event_pump);
@@ -70,7 +77,8 @@ fn main() {
             canvas.copy(&texture, None, None).unwrap();
             canvas.present();
         }
-
+       
+        spin_sleep::sleep(Duration::new(0, 70_000));
     });
 
 
