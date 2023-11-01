@@ -5,6 +5,7 @@ use crate::opcodes;
 use bitflags::bitflags;
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct CPUFlags: u8 {
         const NEGATIVE   = 0b1000_0000;
         const OVERFLOW   = 0b0100_0000;
@@ -14,8 +15,8 @@ bitflags! {
         const INTERRUPT  = 0b0000_0100;
         const ZERO       = 0b0000_0010;
         const CARRY      = 0b0000_0001;
-        
     }
+
 }
 
 pub struct CPU {
@@ -111,8 +112,8 @@ impl CPU {
             register_a: 0,
             register_x: 0,
             register_y: 0,
-            register_s: 0xFF,
-            status:  CPUFlags::from_bits_truncate(0b0011_0100),
+            register_s: 0xFD,
+            status:  CPUFlags::from_bits_truncate(0b0010_0100),
             
             program_counter: 0,
             bus
@@ -126,20 +127,21 @@ impl CPU {
         self.register_y = 0;
         
         self.register_s = 0xFD;
-        self.status = CPUFlags::from_bits_truncate(0b0011_0100);
+        self.status = CPUFlags::from_bits_truncate(0b0010_0100);
         
-        self.program_counter = 0x8600;
+        self.program_counter = self.mem_read_u16(0xFFFC);
     }
 
     pub fn load_and_run(&mut self, program: Vec<u8>) {
         self.load(program);
         self.reset();
+        self.program_counter = 0x0600;
         self.run();
     }
 
     pub fn load(&mut self, program: Vec<u8>) {
         for i in 0..(program.len() as u16) {
-            self.mem_write(0x8600 + i, program[i as usize]);
+            self.mem_write(0x0600 + i, program[i as usize]);
         }
         //self.mem_write_u16(0xFFFC, 0x0600);
     }
@@ -171,7 +173,6 @@ impl CPU {
 
            // Same as ZeroPage_X except with Y this time. Can only be used with LDX and SDX            
            // e.g. LDX $10,Y
-           
            AddressingMode::ZeroPage_Y => {
                
                let pos = self.mem_read(base);
@@ -189,11 +190,8 @@ impl CPU {
            },
 
            // Same as Absolute, however with adding the value from register_y
-
            // e.g. LDA $1000,Y
-           
            AddressingMode::Absolute_Y => {
-               
                let pos = self.mem_read_u16(base);
                let addr = pos.wrapping_add(self.register_y as u16);
                
@@ -213,9 +211,7 @@ impl CPU {
            }
 
            // Indirect Indexed, Zero page location of the LSB of 16 bit address + register_y
-           
            AddressingMode::Indirect_Y => {
-               
                let base = self.mem_read(base);
 
                let lo = self.mem_read(base as u16);
@@ -240,7 +236,7 @@ impl CPU {
     }
 
     fn push_to_stack(&mut self, data: u8) {
-        self.mem_write(0x100 + self.register_s as u16, data); // 0x100 + s because stack is located in this page
+        self.mem_write(0x0100 + self.register_s as u16, data); // 0x100 + s because stack is located in this page
         self.register_s = self.register_s.wrapping_sub(1);
     }
 
@@ -254,7 +250,7 @@ impl CPU {
 
     fn pop_stack(&mut self) -> u8 {
         self.register_s = self.register_s.wrapping_add(1);
-        self.mem_read(0x100 + self.register_s as u16)
+        self.mem_read(0x0100 + self.register_s as u16)
     }
 
     fn pop_stack_u16(&mut self) -> u16 {
@@ -339,15 +335,25 @@ impl CPU {
         self.update_zero_and_negative_flags(self.register_a);
     }
 
+    pub fn calculate_jmp_indirect_bug(&self, lo_addr: u16) -> u16 {
+        let hi_addr = if lo_addr & 0x00FF == 0x00FF { lo_addr & 0xFF00 } else { lo_addr + 1 };
+
+        let lo = self.mem_read(lo_addr) as u16;
+        let hi = self.mem_read(hi_addr) as u16;
+        let value = (hi << 8) | (lo & 0x00FF);
+
+        value
+    }
+
     // JMP - jump
     fn jmp(&mut self, flag: bool) {
          // Indirect indexing
-        let addr = self.get_operand_address(&AddressingMode::Absolute);
-        let value = self.mem_read_u16(addr);
+        let addr: u16 = self.get_operand_address(&AddressingMode::Absolute);
+
         if flag == true {
             self.program_counter = addr - 2;
         } else {
-            self.program_counter = value - 2;
+            self.program_counter = self.calculate_jmp_indirect_bug(addr) - 2;
         }
     }
 
@@ -476,22 +482,24 @@ impl CPU {
     }
 
     fn php(&mut self) {
-        self.status.remove(CPUFlags::BREAK2);
-        self.status.insert(CPUFlags::BREAK1);
-        self.push_to_stack(self.status.bits());
+        let mut flags = self.status.clone();
+        flags.insert(CPUFlags::BREAK2);
+        flags.insert(CPUFlags::BREAK1);
+        self.push_to_stack(flags.bits());
         
     }
 
     fn plp(&mut self) {
         self.status = CPUFlags::from_bits(self.pop_stack()).unwrap();
-        self.status.remove(CPUFlags::BREAK1);
-        self.status.insert(CPUFlags::BREAK2); // Indicate we're not in interrupt
+        self.status.insert(CPUFlags::BREAK1);
+        self.status.remove(CPUFlags::BREAK2); // Indicate we're not in interrupt
     }
 
     fn rotate_left(&mut self, mut data: u8) -> u8 {
-        let new_carry = if data & 0x80 > 0 { 0b1 } else { 0b0 };
+        let new_carry = if data >> 7 == 1 { 0b1 } else { 0b0 };
         data = (data << 1) | (if self.status.contains(CPUFlags::CARRY) { 0b1 } else { 0b0 });
         self.status.set(CPUFlags::CARRY, new_carry == 1);
+        self.status.set(CPUFlags::NEGATIVE, data >> 7 == 1);
         return data;
     }
 
@@ -503,23 +511,24 @@ impl CPU {
     }
 
     fn rotate_right(&mut self, mut data: u8) -> u8 {
-        let new_carry = if data & 0x01 > 0 { 0b1 } else { 0b0 };
-        data = (data >> 1) | (if self.status.contains(CPUFlags::CARRY) { 0x80 } else { 0x00 });
-        self.status.set(CPUFlags::CARRY, new_carry == 1);
+        let new_carry = if data & 1 == 1 { 0x01 } else { 0x00 };
+        data = (data >> 1) | (if self.status.contains(CPUFlags::CARRY) { 0x1 << 7 } else { 0x00 });
+        self.status.set(CPUFlags::CARRY, new_carry != 0);
+        self.status.set(CPUFlags::NEGATIVE, data >> 7 == 1);
         return data;
     }
 
     // Rotate Right
     fn ror(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_address(mode);
-        let data = self.rotate_left(self.mem_read(addr));
+        let data = self.rotate_right(self.mem_read(addr));
         self.mem_write(addr, data);
     }
 
     fn rti(&mut self) {
         self.status = CPUFlags::from_bits(self.pop_stack()).unwrap();
-        self.status.remove(CPUFlags::BREAK1);
-        self.status.insert(CPUFlags::BREAK2);
+        self.status.insert(CPUFlags::BREAK1);
+        self.status.remove(CPUFlags::BREAK2);
         self.program_counter = self.pop_stack_u16();
     }
 
@@ -613,7 +622,7 @@ impl CPU {
 
         let compare = register.wrapping_sub(data);
 
-        self.status.set(CPUFlags::CARRY, compare & 0b1000_0000 == 0);
+        self.status.set(CPUFlags::CARRY, register >= data);
         self.status.set(CPUFlags::NEGATIVE, compare & 0b1000_0000 > 0);
         self.status.set(CPUFlags::ZERO, compare == 0);
     }
@@ -758,13 +767,19 @@ impl CPU {
                 0x28 => self.plp(),
 
                 // ROL ACCUMULATOR
-                0x2A => self.register_a = self.rotate_left(self.register_a),
+                0x2A => {
+                    self.register_a = self.rotate_left(self.register_a);
+                    self.status.set(CPUFlags::ZERO, self.register_a == 0);
+                },
 
                 // ROL
                 0x26 | 0x36 | 0x2E | 0x3E => self.rol(&opcode.mode),
 
                 // ROR ACCUMULATOR
-                0x6A => self.register_a = self.rotate_right(self.register_a),
+                0x6A => {
+                    self.register_a = self.rotate_right(self.register_a);
+                    self.status.set(CPUFlags::ZERO, self.register_a == 0);
+                },
                  
                 // ROR
                 0x66 | 0x76 | 0x6E | 0x7E => self.ror(&opcode.mode),
@@ -1080,7 +1095,7 @@ mod test {
         cpu.reset();
         cpu.register_a = 5;
         cpu.run();
-        assert_eq!(cpu.register_x, 5) // Check Z flag is on
+        assert_eq!(cpu.register_x, 5) 
     }
 
     #[test]

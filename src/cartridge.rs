@@ -24,7 +24,7 @@ impl Rom {
         }
 
         let mapper = (raw[7] & 0b1111_0000) | (raw[6] >> 4);
-
+        
         let ver = (raw[7] >> 2) & 0b11;
         if ver != 0 {
             return Err("NES2.0 format not supported (yet)".to_string());
