@@ -68,7 +68,7 @@ pub trait Memory {
 
     fn mem_write(&mut self, addr: u16, data: u8);
 
-    fn mem_read_u16(&mut self, pos: u16) -> u16 {
+    fn mem_read_u16(&self, pos: u16) -> u16 {
         let lo = self.mem_read(pos) as u16; // Reading the data from pos
         let hi = self.mem_read(pos + 1) as u16; // Reading the next data
         // Shifting the next data left by 8 bits and replacing 
@@ -95,7 +95,7 @@ impl Memory for CPU {
         self.bus.mem_write(addr, data);
     }
 
-    fn mem_read_u16(&mut self, pos: u16) -> u16 {
+    fn mem_read_u16(&self, pos: u16) -> u16 {
         self.bus.mem_read_u16(pos)
     }
 
@@ -144,96 +144,99 @@ impl CPU {
         //self.mem_write_u16(0xFFFC, 0x0600);
     }
 
+    pub fn get_operand_address_from_base(&self, mode: &AddressingMode, base: u16) -> u16 {
+        match mode {
+            // Immediate addressing deals with the number itself
+            // e.g. LDA #10 means load 10 into the accumulator
+           AddressingMode::Immediate => base,
+
+           // Address data from the next 8 bits only (the first 256 bytes of memory)
+           // Good for conserving speed and memory
+           
+           // e.g. LDA $00 loads accumulator from $0000
+           AddressingMode::ZeroPage => self.mem_read(base) as u16,
+
+           // Address data from the absolute address
+           // e.g. LDA $1234 load from $1234 into accumulator
+           AddressingMode::Absolute => self.mem_read_u16(base),
+
+           // Same as ZeroPage, however with the inclusion of adding the
+           // value from register_x to the address
+           // e.g. LDA $00,X
+           AddressingMode::ZeroPage_X => {
+               let pos = self.mem_read(base);
+               let addr = pos.wrapping_add(self.register_x) as u16;
+               addr
+           },
+
+           // Same as ZeroPage_X except with Y this time. Can only be used with LDX and SDX            
+           // e.g. LDX $10,Y
+           
+           AddressingMode::ZeroPage_Y => {
+               
+               let pos = self.mem_read(base);
+               let addr = pos.wrapping_add(self.register_y) as u16;
+               
+               addr
+           },
+
+           // Same as Absolute, however with adding the value from register_x
+           // e.g. LDA $1000,X
+           AddressingMode::Absolute_X => {
+               let pos = self.mem_read_u16(base);
+               let addr = pos.wrapping_add(self.register_x as u16);
+               addr
+           },
+
+           // Same as Absolute, however with adding the value from register_y
+
+           // e.g. LDA $1000,Y
+           
+           AddressingMode::Absolute_Y => {
+               
+               let pos = self.mem_read_u16(base);
+               let addr = pos.wrapping_add(self.register_y as u16);
+               
+               addr
+           },
+           
+           // Indexed Indirect, Address taken from table of addresses held on the zero page.
+           // Tabled address taken from instruction and value of register_x added to give the location of
+           // the LSB of the target
+           // e.g. LDA ($00, X)
+           AddressingMode::Indirect_X => {
+               let base = self.mem_read(base);
+               let ptr: u8 = (base as u8).wrapping_add(self.register_x);
+               let lo = self.mem_read(ptr as u16);
+               let hi = self.mem_read(ptr.wrapping_add(1) as u16);
+               (hi as u16) << 8 | (lo as u16)
+           }
+
+           // Indirect Indexed, Zero page location of the LSB of 16 bit address + register_y
+           
+           AddressingMode::Indirect_Y => {
+               
+               let base = self.mem_read(base);
+
+               let lo = self.mem_read(base as u16);
+               let hi = self.mem_read((base as u8).wrapping_add(1) as u16);
+               let deref_base = (hi as u16) << 8 | (lo as u16);
+               let deref = deref_base.wrapping_add(self.register_y as u16);
+               
+               deref
+           }
+
+           AddressingMode::NoneAddressing => {
+               panic!("Mode {:?} is not supported", mode)
+           }
+
+       }
+
+    }
+
     // Where am I addressing data from?
     fn get_operand_address(&mut self, mode: &AddressingMode) -> u16 {
-
-        match mode {
-             // Immediate addressing deals with the number itself
-             // e.g. LDA #10 means load 10 into the accumulator
-            AddressingMode::Immediate => self.program_counter,
-
-            // Address data from the next 8 bits only (the first 256 bytes of memory)
-            // Good for conserving speed and memory
-            
-            // e.g. LDA $00 loads accumulator from $0000
-            AddressingMode::ZeroPage => self.mem_read(self.program_counter) as u16,
-
-            // Address data from the absolute address
-            // e.g. LDA $1234 load from $1234 into accumulator
-            AddressingMode::Absolute => self.mem_read_u16(self.program_counter),
-
-            // Same as ZeroPage, however with the inclusion of adding the
-            // value from register_x to the address
-            // e.g. LDA $00,X
-            AddressingMode::ZeroPage_X => {
-                let pos = self.mem_read(self.program_counter);
-                let addr = pos.wrapping_add(self.register_x) as u16;
-                addr
-            },
-
-            // Same as ZeroPage_X except with Y this time. Can only be used with LDX and SDX            
-            // e.g. LDX $10,Y
-            
-            AddressingMode::ZeroPage_Y => {
-                
-                let pos = self.mem_read(self.program_counter);
-                let addr = pos.wrapping_add(self.register_y) as u16;
-                
-                addr
-            },
-
-            // Same as Absolute, however with adding the value from register_x
-            // e.g. LDA $1000,X
-            AddressingMode::Absolute_X => {
-                let pos = self.mem_read_u16(self.program_counter);
-                let addr = pos.wrapping_add(self.register_x as u16);
-                addr
-            },
-
-            // Same as Absolute, however with adding the value from register_y
-
-            // e.g. LDA $1000,Y
-            
-            AddressingMode::Absolute_Y => {
-                
-                let pos = self.mem_read_u16(self.program_counter);
-                let addr = pos.wrapping_add(self.register_y as u16);
-                
-                addr
-            },
-            
-            // Indexed Indirect, Address taken from table of addresses held on the zero page.
-            // Tabled address taken from instruction and value of register_x added to give the location of
-            // the LSB of the target
-            // e.g. LDA ($00, X)
-            AddressingMode::Indirect_X => {
-                let base = self.mem_read(self.program_counter);
-                let ptr: u8 = (base as u8).wrapping_add(self.register_x);
-                let lo = self.mem_read(ptr as u16);
-                let hi = self.mem_read(ptr.wrapping_add(1) as u16);
-                (hi as u16) << 8 | (lo as u16)
-            }
-
-            // Indirect Indexed, Zero page location of the LSB of 16 bit address + register_y
-            
-            AddressingMode::Indirect_Y => {
-                
-                let base = self.mem_read(self.program_counter);
-
-                let lo = self.mem_read(base as u16);
-                let hi = self.mem_read((base as u8).wrapping_add(1) as u16);
-                let deref_base = (hi as u16) << 8 | (lo as u16);
-                let deref = deref_base.wrapping_add(self.register_y as u16);
-                
-                deref
-            }
-
-            AddressingMode::NoneAddressing => {
-                panic!("Mode {:?} is not supported", mode)
-            }
-
-        }
-
+        self.get_operand_address_from_base(mode, self.program_counter)
     }
 
     fn push_to_stack(&mut self, data: u8) {
