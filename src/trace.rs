@@ -100,7 +100,7 @@ pub fn trace(cpu: &CPU) -> String {
         .collect::<Vec<String>>()
         .join(" ");
 
-    let op_string = format!("{:04X}  {:8}  {:3} {}", current_PC, instruction_string, opcode.mnemonic, address_string);
+    let op_string = format!("{:04X}  {:8} {: >4} {}", current_PC, instruction_string, opcode.mnemonic, address_string);
     let status_string = format!("A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}", 
                                     cpu.register_a, cpu.register_x, cpu.register_y, cpu.status.bits(), cpu.register_s);
 

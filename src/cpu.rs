@@ -291,6 +291,13 @@ impl CPU {
         self.mem_write(addr, data);
     }
 
+    // AND X register with Accumulator
+    fn axs(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+
+        self.mem_write(addr, self.register_x & self.register_a);
+    }
+
     fn shift_left(&mut self, mut data: u8) -> u8 {
         self.status.set(CPUFlags::CARRY, data & 0b1000_0000 > 0);
         data = data << 1;
@@ -645,10 +652,24 @@ impl CPU {
                 0x00 => return,
 
                 // NOP
-                0xEA => {}, // Do nothing
+                0xEA | 0x1A | 0x3A | 0x5A | 0x7A | 0xDA | 0xFA => {}, // Do nothing
+                0x04 | 0x14 | 0x34 | 0x44 | 0x54 | 0x64 | 0x74 | 0x80 | 0x82 | 0x89 | 0xC2 | 0xD4 | 0xE2 | 0xF4 => {}, // Do nothing
+                0x0C | 0x1C | 0x3C | 0x5C | 0x7C | 0xDC | 0xFC => {}, // Do nothing
 
                 // ADC
                 0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71 => self.adc(&opcode.mode),
+                
+                // ANC
+                0x0B | 0x2B => {
+                    self.and(&opcode.mode);
+                    self.status.set(CPUFlags::CARRY, self.register_a >> 7 == 1);
+                } 
+
+                // ALR
+                0x4B => {
+                    self.and(&opcode.mode);
+                    self.lsr_acc();
+                }
 
                 // AND
                 0x29 | 0x25 | 0x35 | 0x2D | 0x3D | 0x39 | 0x21 | 0x31 => self.and(&opcode.mode),
@@ -658,6 +679,9 @@ impl CPU {
 
                 // ASL
                 0x06 | 0x16 | 0x0E | 0x1E => self.asl(&opcode.mode),
+
+                // AXS
+                0x87 | 0x97 | 0x83 | 0x8F => self.axs(&opcode.mode),
 
                 // BCC
                 0x90 => self.program_counter = self.program_counter.wrapping_add(self.calculate_branch_offset_clear(CPUFlags::CARRY)),         
@@ -707,6 +731,12 @@ impl CPU {
                 // CPY
                 0xC0 | 0xC4 | 0xCC => self.compare(self.register_y, &opcode.mode),
 
+                // DCP
+                0xC7 | 0xD7 | 0xCF | 0xDF | 0xDB | 0xC3 | 0xD3 => {
+                    self.dec(&opcode.mode);
+                    self.compare(self.register_a, &opcode.mode);
+                }
+
                 // DEC
                 0xC6 | 0xD6 | 0xCE | 0xDE => self.dec(&opcode.mode),
 
@@ -728,6 +758,12 @@ impl CPU {
                 // INY
                 0xC8 => self.iny(),
 
+                // ISB
+                0xE7 | 0xF7 | 0xEF | 0xFF | 0xFB | 0xE3 | 0xF3 => {
+                    self.inc(&opcode.mode);
+                    self.sbc(&opcode.mode);
+                }
+
                 // JMP ABSOLUTE
                 0x4C => self.jmp(true),
                 
@@ -736,6 +772,12 @@ impl CPU {
 
                 // JSR
                 0x20 => self.jsr(),
+
+                // LAX
+                0xA7 | 0xB7 | 0xAF | 0xBF | 0xA3 | 0xB3 => {
+                    self.lda(&opcode.mode);
+                    self.tax();
+                },
 
                 // LDA
                 0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(&opcode.mode),
@@ -766,6 +808,18 @@ impl CPU {
                 // PLP
                 0x28 => self.plp(),
 
+                // RLA
+                0x27 | 0x37 | 0x2F | 0x3F | 0x3B | 0x23 | 0x33 => {
+                    self.rol(&opcode.mode);
+                    self.and(&opcode.mode);
+                }
+
+                // RRA
+                0x67 | 0x77 | 0x6F | 0x7F | 0x7B | 0x63 | 0x73 => {
+                    self.ror(&opcode.mode);
+                    self.adc(&opcode.mode);
+                }
+
                 // ROL ACCUMULATOR
                 0x2A => {
                     self.register_a = self.rotate_left(self.register_a);
@@ -791,7 +845,13 @@ impl CPU {
                 0x60 => self.rts(),
 
                 // SBC
-                0xE9 | 0xE5 | 0xF5 | 0xED | 0xFD | 0xF9 | 0xE1 | 0xF1 => self.sbc(&opcode.mode),
+                0xEB | 0xE9 | 0xE5 | 0xF5 | 0xED | 0xFD | 0xF9 | 0xE1 | 0xF1 => self.sbc(&opcode.mode),
+
+                // SLO
+                0x07 | 0x17 | 0x0F | 0x1F | 0x1B | 0x03 | 0x13 => {
+                    self.asl(&opcode.mode);
+                    self.ora(&opcode.mode);
+                }
 
                 // SEC
                 0x38 => self.status.insert(CPUFlags::CARRY),
@@ -801,6 +861,12 @@ impl CPU {
 
                 // SEI
                 0x78 => self.status.insert(CPUFlags::INTERRUPT),
+
+                // SRE
+                0x47 | 0x57 | 0x4F | 0x5F | 0x5B | 0x43 | 0x53 => {
+                    self.lsr(&opcode.mode);
+                    self.eor(&opcode.mode);
+                }
 
                 // STA
                 0x85 | 0x95 | 0x8D | 0x9D | 0x99 | 0x81 | 0x91 => self.sta(&opcode.mode),

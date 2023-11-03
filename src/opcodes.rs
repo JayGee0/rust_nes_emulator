@@ -26,7 +26,19 @@ impl OpCode {
 lazy_static! {
     pub static ref CPU_OP_CODES: Vec<OpCode> = vec![
         OpCode::new(0x00, "BRK", 1, 7, AddressingMode::NoneAddressing), // BRK - Force Interrupt
-        OpCode::new(0xEA, "NOP", 1, 2, AddressingMode::NoneAddressing), // NOP - No Operation
+        
+        /*
+        =========================
+        NOP - No Operation
+        =========================
+        */
+        OpCode::new(0xEA, "NOP", 1, 2, AddressingMode::NoneAddressing),
+        OpCode::new(0x1A, "*NOP", 1, 2, AddressingMode::NoneAddressing),
+        OpCode::new(0x3A, "*NOP", 1, 2, AddressingMode::NoneAddressing),
+        OpCode::new(0x5A, "*NOP", 1, 2, AddressingMode::NoneAddressing),
+        OpCode::new(0x7A, "*NOP", 1, 2, AddressingMode::NoneAddressing),
+        OpCode::new(0xDA, "*NOP", 1, 2, AddressingMode::NoneAddressing),
+        OpCode::new(0xFA, "*NOP", 1, 2, AddressingMode::NoneAddressing),
 
         /*
         =========================
@@ -41,6 +53,16 @@ lazy_static! {
         OpCode::new(0x79, "ADC", 3, 4, AddressingMode::Absolute_Y),
         OpCode::new(0x61, "ADC", 2, 6, AddressingMode::Indirect_X),
         OpCode::new(0x71, "ADC", 2, 5, AddressingMode::Indirect_Y),
+
+        OpCode::new(0x4B, "*ALR", 2, 1, AddressingMode::Immediate), // ALR - AND #i, LSR A
+
+        /*
+        =========================
+        ANC - Logical AND with Carry
+        =========================
+        */
+        OpCode::new(0x0B, "ANC", 2, 2, AddressingMode::Immediate),
+        OpCode::new(0x2B, "ANC", 2, 2, AddressingMode::Immediate),
 
         /*
         =========================
@@ -66,6 +88,16 @@ lazy_static! {
         OpCode::new(0x16, "ASL", 2, 6, AddressingMode::ZeroPage_X),
         OpCode::new(0x0E, "ASL", 3, 6, AddressingMode::Absolute),
         OpCode::new(0x1E, "ASL", 3, 7, AddressingMode::Absolute_X),
+
+        /*
+        =========================
+        SAX - AND X Register
+        =========================
+        */
+        OpCode::new(0x87, "*SAX", 2, 3, AddressingMode::ZeroPage),
+        OpCode::new(0x97, "*SAX", 2, 4, AddressingMode::ZeroPage_Y),
+        OpCode::new(0x83, "*SAX", 2, 6, AddressingMode::Indirect_X),
+        OpCode::new(0x8F, "*SAX", 3, 4, AddressingMode::Absolute),
                
         /*
         =========================
@@ -133,6 +165,39 @@ lazy_static! {
         
         /*
         =========================
+        DCP - DEC and then CMP
+        =========================
+        */
+        OpCode::new(0xC7, "*DCP", 2, 5, AddressingMode::ZeroPage),
+        OpCode::new(0xD7, "*DCP", 2, 6, AddressingMode::ZeroPage_X),
+        OpCode::new(0xCF, "*DCP", 3, 6, AddressingMode::Absolute),
+        OpCode::new(0xDF, "*DCP", 3, 7, AddressingMode::Absolute_X),
+        OpCode::new(0xDB, "*DCP", 3, 7, AddressingMode::Absolute_Y),
+        OpCode::new(0xC3, "*DCP", 2, 8, AddressingMode::Indirect_X),
+        OpCode::new(0xD3, "*DCP", 2, 8, AddressingMode::Indirect_Y),
+
+        /*
+        =========================  
+        DOP - Double NOP
+        =========================
+        */
+        OpCode::new(0x04, "*NOP", 2, 3, AddressingMode::ZeroPage),
+        OpCode::new(0x14, "*NOP", 2, 4, AddressingMode::ZeroPage_X),
+        OpCode::new(0x34, "*NOP", 2, 4, AddressingMode::ZeroPage_X),
+        OpCode::new(0x44, "*NOP", 2, 3, AddressingMode::ZeroPage),
+        OpCode::new(0x54, "*NOP", 2, 4, AddressingMode::ZeroPage_X),
+        OpCode::new(0x64, "*NOP", 2, 3, AddressingMode::ZeroPage),
+        OpCode::new(0x74, "*NOP", 2, 4, AddressingMode::ZeroPage_X),
+        OpCode::new(0x80, "*NOP", 2, 2, AddressingMode::Immediate),
+        OpCode::new(0x82, "*NOP", 2, 2, AddressingMode::Immediate),
+        OpCode::new(0x89, "*NOP", 2, 2, AddressingMode::Immediate),
+        OpCode::new(0xC2, "*NOP", 2, 2, AddressingMode::Immediate),
+        OpCode::new(0xD4, "*NOP", 2, 4, AddressingMode::ZeroPage_X),
+        OpCode::new(0xE2, "*NOP", 2, 2, AddressingMode::Immediate),
+        OpCode::new(0xF4, "*NOP", 2, 4, AddressingMode::ZeroPage_X),
+
+        /*
+        =========================
         DEC - Decrement Memory
         =========================
         */
@@ -173,6 +238,19 @@ lazy_static! {
 
         /*
         =========================
+        ISB - INC and then SBC
+        =========================
+        */
+        OpCode::new(0xE7, "*ISB", 2, 5, AddressingMode::ZeroPage),
+        OpCode::new(0xF7, "*ISB", 2, 6, AddressingMode::ZeroPage_X),
+        OpCode::new(0xEF, "*ISB", 3, 6, AddressingMode::Absolute),
+        OpCode::new(0xFF, "*ISB", 3, 7, AddressingMode::Absolute_X),
+        OpCode::new(0xFB, "*ISB", 3, 7, AddressingMode::Absolute_Y),
+        OpCode::new(0xE3, "*ISB", 2, 8, AddressingMode::Indirect_X),
+        OpCode::new(0xF3, "*ISB", 2, 8, AddressingMode::Indirect_Y),
+        
+        /*
+        =========================
         JMP - Jump
         =========================
         */
@@ -181,6 +259,18 @@ lazy_static! {
 
         OpCode::new(0x20, "JSR", 3, 6, AddressingMode::Absolute),
         
+        /*
+        =========================
+        LAX - Load Accumulator and X Register with memory
+        =========================
+        */
+        OpCode::new(0xA7, "*LAX", 2, 3, AddressingMode::ZeroPage),
+        OpCode::new(0xB7, "*LAX", 2, 4, AddressingMode::ZeroPage_Y),
+        OpCode::new(0xAF, "*LAX", 3, 4, AddressingMode::Absolute),
+        OpCode::new(0xBF, "*LAX", 3, 4, AddressingMode::Absolute_Y),
+        OpCode::new(0xA3, "*LAX", 2, 6, AddressingMode::Indirect_X),
+        OpCode::new(0xB3, "*LAX", 2, 5, AddressingMode::Indirect_Y),
+
         /*
         =========================
         LDA - Load Accumulator
@@ -254,6 +344,32 @@ lazy_static! {
 
         /*
         =========================
+        RLA - ROL and AND
+        =========================
+        */
+        OpCode::new(0x27, "*RLA", 2, 5, AddressingMode::ZeroPage),
+        OpCode::new(0x37, "*RLA", 2, 6, AddressingMode::ZeroPage_X),
+        OpCode::new(0x2F, "*RLA", 3, 6, AddressingMode::Absolute),
+        OpCode::new(0x3F, "*RLA", 3, 7, AddressingMode::Absolute_X),
+        OpCode::new(0x3B, "*RLA", 3, 7, AddressingMode::Absolute_Y),
+        OpCode::new(0x23, "*RLA", 2, 8, AddressingMode::Indirect_X),
+        OpCode::new(0x33, "*RLA", 2, 8, AddressingMode::Indirect_Y),
+
+        /*
+        =========================
+        RRA - ROR and ADC
+        =========================
+        */
+        OpCode::new(0x67, "*RRA", 2, 5, AddressingMode::ZeroPage),
+        OpCode::new(0x77, "*RRA", 2, 6, AddressingMode::ZeroPage_X),
+        OpCode::new(0x6F, "*RRA", 3, 6, AddressingMode::Absolute),
+        OpCode::new(0x7F, "*RRA", 3, 7, AddressingMode::Absolute_X),
+        OpCode::new(0x7B, "*RRA", 3, 7, AddressingMode::Absolute_Y),
+        OpCode::new(0x63, "*RRA", 2, 8, AddressingMode::Indirect_X),
+        OpCode::new(0x73, "*RRA", 2, 8, AddressingMode::Indirect_Y),
+
+        /*
+        =========================
         ROL - Rotate Left
         =========================
         */
@@ -288,6 +404,7 @@ lazy_static! {
         =========================
         */
         OpCode::new(0xE9, "SBC", 2, 2, AddressingMode::Immediate),
+        OpCode::new(0xEB, "*SBC", 2, 2, AddressingMode::Immediate),
         OpCode::new(0xE5, "SBC", 2, 3, AddressingMode::ZeroPage),
         OpCode::new(0xF5, "SBC", 2, 4, AddressingMode::ZeroPage_X),
         OpCode::new(0xED, "SBC", 3, 4, AddressingMode::Absolute),
@@ -298,12 +415,38 @@ lazy_static! {
 
         /*
         =========================
+        SLO - ASL then ORA
+        =========================
+        */
+        OpCode::new(0x07, "*SLO", 2, 5, AddressingMode::ZeroPage),
+        OpCode::new(0x17, "*SLO", 2, 6, AddressingMode::ZeroPage_X),
+        OpCode::new(0x0F, "*SLO", 3, 6, AddressingMode::Absolute),
+        OpCode::new(0x1F, "*SLO", 3, 7, AddressingMode::Absolute_X),
+        OpCode::new(0x1B, "*SLO", 3, 7, AddressingMode::Absolute_Y),
+        OpCode::new(0x03, "*SLO", 2, 8, AddressingMode::Indirect_X),
+        OpCode::new(0x13, "*SLO", 2, 8, AddressingMode::Indirect_Y),
+
+        /*
+        =========================
         Set Flags
         =========================
         */
         OpCode::new(0x38, "SEC", 1, 2, AddressingMode::NoneAddressing), // SEC - Set Carry Flag
         OpCode::new(0xF8, "SED", 1, 2, AddressingMode::NoneAddressing), // SED - Set Decimal Flag
         OpCode::new(0x78, "SEI", 1, 2, AddressingMode::NoneAddressing), // SEI - Set Interrupt Disable
+
+        /*
+        =========================
+        SRE - LSR and EOR
+        =========================
+        */
+        OpCode::new(0x47, "*SRE", 2, 5, AddressingMode::ZeroPage),
+        OpCode::new(0x57, "*SRE", 2, 6, AddressingMode::ZeroPage_X),
+        OpCode::new(0x4F, "*SRE", 3, 6, AddressingMode::Absolute),
+        OpCode::new(0x5F, "*SRE", 3, 7, AddressingMode::Absolute_X),
+        OpCode::new(0x5B, "*SRE", 3, 7, AddressingMode::Absolute_Y),
+        OpCode::new(0x43, "*SRE", 2, 8, AddressingMode::Indirect_X),
+        OpCode::new(0x53, "*SRE", 2, 8, AddressingMode::Indirect_Y),
 
         /*
         =========================
@@ -348,6 +491,18 @@ lazy_static! {
         OpCode::new(0x9A, "TXS", 1, 2, AddressingMode::NoneAddressing), // TXS - Transfer X to Stack Pointer
         OpCode::new(0x98, "TYA", 1, 2, AddressingMode::NoneAddressing), // TYA - Transfer Y to Accumulator
 
+        /*
+        =========================
+        TOP - Triple NOP
+        =========================
+        */
+        OpCode::new(0x0C, "*NOP", 3, 4, AddressingMode::Absolute ), 
+        OpCode::new(0x1C, "*NOP", 3, 4, AddressingMode::Absolute_X), 
+        OpCode::new(0x3C, "*NOP", 3, 4, AddressingMode::Absolute_X), 
+        OpCode::new(0x5C, "*NOP", 3, 4, AddressingMode::Absolute_X), 
+        OpCode::new(0x7C, "*NOP", 3, 4, AddressingMode::Absolute_X), 
+        OpCode::new(0xDC, "*NOP", 3, 4, AddressingMode::Absolute_X), 
+        OpCode::new(0xFC, "*NOP", 3, 4, AddressingMode::Absolute_X), 
 
     ];
 
