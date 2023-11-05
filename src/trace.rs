@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{CPU, opcodes, cpu::{Memory, AddressingMode}};
 
-pub fn trace(cpu: &CPU) -> String {
+pub fn trace(cpu: &mut CPU) -> String {
     let ref opcodes: HashMap<u8, &'static opcodes::OpCode> = *opcodes::OPCODES_MAP;
 
     let current_PC = cpu.program_counter;

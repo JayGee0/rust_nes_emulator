@@ -5,7 +5,6 @@ use crate::opcodes;
 use bitflags::bitflags;
 
 bitflags! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct CPUFlags: u8 {
         const NEGATIVE   = 0b1000_0000;
         const OVERFLOW   = 0b0100_0000;
@@ -65,11 +64,11 @@ pub enum AddressingMode {
 }
 
 pub trait Memory {
-    fn mem_read(&self, addr: u16) -> u8;
+    fn mem_read(&mut self, addr: u16) -> u8;
 
     fn mem_write(&mut self, addr: u16, data: u8);
 
-    fn mem_read_u16(&self, pos: u16) -> u16 {
+    fn mem_read_u16(&mut self, pos: u16) -> u16 {
         let lo = self.mem_read(pos) as u16; // Reading the data from pos
         let hi = self.mem_read(pos + 1) as u16; // Reading the next data
         // Shifting the next data left by 8 bits and replacing 
@@ -88,7 +87,7 @@ pub trait Memory {
 }
 
 impl Memory for CPU {
-    fn mem_read(&self, addr: u16) -> u8 {
+    fn mem_read(&mut self, addr: u16) -> u8 {
         self.bus.mem_read(addr)
     }
 
@@ -96,7 +95,7 @@ impl Memory for CPU {
         self.bus.mem_write(addr, data);
     }
 
-    fn mem_read_u16(&self, pos: u16) -> u16 {
+    fn mem_read_u16(&mut self, pos: u16) -> u16 {
         self.bus.mem_read_u16(pos)
     }
 
@@ -146,7 +145,7 @@ impl CPU {
         //self.mem_write_u16(0xFFFC, 0x0600);
     }
 
-    pub fn get_operand_address_from_base(&self, mode: &AddressingMode, base: u16) -> u16 {
+    pub fn get_operand_address_from_base(&mut self, mode: &AddressingMode, base: u16) -> u16 {
         match mode {
             // Immediate addressing deals with the number itself
             // e.g. LDA #10 means load 10 into the accumulator
@@ -342,7 +341,7 @@ impl CPU {
         self.update_zero_and_negative_flags(self.register_a);
     }
 
-    pub fn calculate_jmp_indirect_bug(&self, lo_addr: u16) -> u16 {
+    pub fn calculate_jmp_indirect_bug(&mut self, lo_addr: u16) -> u16 {
         let hi_addr = if lo_addr & 0x00FF == 0x00FF { lo_addr & 0xFF00 } else { lo_addr + 1 };
 
         let lo = self.mem_read(lo_addr) as u16;
@@ -513,7 +512,8 @@ impl CPU {
     // Rotate Left
     fn rol(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_address(mode);
-        let data = self.rotate_left(self.mem_read(addr));
+        let mut data = self.mem_read(addr);
+        data = self.rotate_left(data);
         self.mem_write(addr, data);
     }
 
@@ -528,7 +528,8 @@ impl CPU {
     // Rotate Right
     fn ror(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_address(mode);
-        let data = self.rotate_right(self.mem_read(addr));
+        let mut data = self.mem_read(addr);
+        data = self.rotate_right(data);
         self.mem_write(addr, data);
     }
 
