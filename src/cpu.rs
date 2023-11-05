@@ -231,7 +231,11 @@ impl CPU {
 
     // Where am I addressing data from?
     fn get_operand_address(&mut self, mode: &AddressingMode) -> u16 {
-        self.get_operand_address_from_base(mode, self.program_counter)
+        let addr = self.get_operand_address_from_base(mode, self.program_counter);
+        if ((addr >> 8) as u8) != ((self.program_counter >> 8) as u8) {
+            self.bus.tick(1); // +1 if crosses page boundary
+        }
+        addr
     }
 
     fn push_to_stack(&mut self, data: u8) {
@@ -583,28 +587,18 @@ impl CPU {
 
     }
 
-    fn calculate_branch_offset_clear(&mut self, condition: CPUFlags) -> u16 {
-        if !self.status.contains(condition) {
+    fn branch(&mut self, condition: bool) -> u16 {
+        if condition {
+            self.bus.tick(1); // +1 if branch taken
             let data = self.mem_read(self.program_counter);
-            if 0x80 & data == 0 {
-                return data as u16
-            } else {
-                return (data as u16) | (0xFF) << 8
+            
+            let offset = if 0x80 & data == 0 {data as u16} else {(data as u16) | (0xFF) << 8};
+            if ((self.program_counter >> 8) as u8) != ((self.program_counter.wrapping_add(offset) >> 8) as u8) {
+                self.bus.tick(1); // +1 if crosses page boundary
             }
+            return offset
         }
-        return 0
-    }
-
-    fn calculate_branch_offset_set(&mut self, condition: CPUFlags) -> u16 {
-        if self.status.contains(condition) {
-            let data = self.mem_read(self.program_counter);
-            if 0x80 & data == 0 {
-                return data as u16
-            } else {
-                return (data as u16) | (0xFF) << 8
-            }        
-        }
-        return 0
+        0
     }
 
     fn add_to_acc_with_carry(&mut self, data: u8) {
@@ -685,28 +679,28 @@ impl CPU {
                 0x87 | 0x97 | 0x83 | 0x8F => self.axs(&opcode.mode),
 
                 // BCC
-                0x90 => self.program_counter = self.program_counter.wrapping_add(self.calculate_branch_offset_clear(CPUFlags::CARRY)),         
+                0x90 => self.program_counter = self.program_counter.wrapping_add(self.branch(!self.status.contains(CPUFlags::CARRY))),         
 
                 // BCS
-                0xB0 => self.program_counter = self.program_counter.wrapping_add(self.calculate_branch_offset_set(CPUFlags::CARRY)),
+                0xB0 => self.program_counter = self.program_counter.wrapping_add(self.branch(self.status.contains(CPUFlags::CARRY))),
 
                 // BEQ
-                0xF0 => self.program_counter = self.program_counter.wrapping_add(self.calculate_branch_offset_set(CPUFlags::ZERO)),
+                0xF0 => self.program_counter = self.program_counter.wrapping_add(self.branch(self.status.contains(CPUFlags::ZERO))),
 
                 // BMI
-                0x30 => self.program_counter = self.program_counter.wrapping_add(self.calculate_branch_offset_set(CPUFlags::NEGATIVE)),
+                0x30 => self.program_counter = self.program_counter.wrapping_add(self.branch(self.status.contains(CPUFlags::NEGATIVE))),
 
                 // BNE
-                0xD0 => self.program_counter = self.program_counter.wrapping_add(self.calculate_branch_offset_clear(CPUFlags::ZERO)),
+                0xD0 => self.program_counter = self.program_counter.wrapping_add(self.branch(!self.status.contains(CPUFlags::ZERO))),
 
                 // BPL
-                0x10 => self.program_counter = self.program_counter.wrapping_add(self.calculate_branch_offset_clear(CPUFlags::NEGATIVE)),
+                0x10 => self.program_counter = self.program_counter.wrapping_add(self.branch(!self.status.contains(CPUFlags::NEGATIVE))),
 
                 // BVC
-                0x50 => self.program_counter = self.program_counter.wrapping_add(self.calculate_branch_offset_clear(CPUFlags::OVERFLOW)),
+                0x50 => self.program_counter = self.program_counter.wrapping_add(self.branch(!self.status.contains(CPUFlags::OVERFLOW))),
 
                 // BVS
-                0x70 => self.program_counter = self.program_counter.wrapping_add(self.calculate_branch_offset_set(CPUFlags::OVERFLOW)),
+                0x70 => self.program_counter = self.program_counter.wrapping_add(self.branch(self.status.contains(CPUFlags::OVERFLOW))),
 
                 // BIT
                 0x24 | 0x2C => self.bit(&opcode.mode),
@@ -899,6 +893,9 @@ impl CPU {
                 
                 _ => todo!("")
             }
+            
+            self.bus.tick(opcode.cycles);
+           
             self.program_counter += opcode.len as u16 - 1;
         }
 

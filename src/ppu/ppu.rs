@@ -12,6 +12,9 @@ pub struct PPU {
     pub mirroring: Mirroring,
     pub internal_data_buffer: u8,
 
+    pub scanlines: u16,
+    cycles: usize,
+
     // REGISTERS
     // =====================
     pub addr: AddrRegister,
@@ -31,12 +34,39 @@ impl PPU {
             oam_addr: 0,
             mirroring,
             internal_data_buffer: 0,
+
             addr: AddrRegister::new(),
             control: ControlRegister::new(),
             mask: MaskRegister::new(),
             status: StatusRegister::new(),
             scroll: ScrollRegister::new(),
+
+            scanlines: 0,
+            cycles: 0,
+
         }
+    }
+
+    pub fn tick(&mut self, cycles: u8) -> bool {
+        self.cycles += cycles as usize;
+        if self.cycles >= 341 { // Every scanline lasts for 341 cycles
+            self.cycles = self.cycles - 341;
+            self.scanlines += 1;
+
+            if self.scanlines == 241 { // VBlank flag set
+                if self.control.generate_nmi() {
+                    self.status.set_vertical_blank(true);
+                    todo!("Trigger NMI Interrupt")
+                }
+            }
+
+            if self.scanlines >= 262 {
+                self.scanlines = 0;
+                self.status.set_vertical_blank(false);
+                return true;
+            }
+        }
+        return false;
     }
 
     fn increment_vram_addr(&mut self) {
