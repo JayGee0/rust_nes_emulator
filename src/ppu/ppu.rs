@@ -13,7 +13,8 @@ pub struct PPU {
     pub internal_data_buffer: u8,
 
     pub scanlines: u16,
-    cycles: usize,
+    pub cycles: usize,
+    pub nmi_interrupt: Option<u8>,
 
     // REGISTERS
     // =====================
@@ -43,6 +44,7 @@ impl PPU {
 
             scanlines: 0,
             cycles: 0,
+            nmi_interrupt: None,
 
         }
     }
@@ -117,7 +119,11 @@ impl PPU {
     }
 
     pub fn write_to_control(&mut self, value: u8) {
+        let prev_nmi = self.control.generate_nmi();
         self.control.update(value);
+        if !prev_nmi && self.control.generate_nmi() && self.status.in_vertical_blank() {
+            self.nmi_interrupt = Some(1);
+        }
     }
 
     pub fn write_to_mask(&mut self, value: u8) {

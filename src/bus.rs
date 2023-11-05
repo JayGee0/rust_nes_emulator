@@ -28,6 +28,10 @@ impl Bus {
         self.prg_rom[addr as usize]
     }
 
+    pub fn poll_nmi_status(&mut self) -> Option<u8> {
+        return self.ppu.nmi_interrupt.take();
+    }
+
     pub fn tick(&mut self, cycles: u8) {
         self.cycles += cycles as usize;
         self.ppu.tick(cycles * 3); // PPU clock is 3x faster than CPU clock
