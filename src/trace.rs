@@ -14,7 +14,7 @@ pub fn trace(cpu: &mut CPU) -> String {
     let (mem_addr, mem_val) = match opcode.mode { // mem_addr = real address indexed, mem_val = value retrieved from memory
         AddressingMode::Immediate | AddressingMode::NoneAddressing => (0,0),
         _ => {
-            let addr = cpu.get_operand_address_from_base(&opcode.mode, cpu.program_counter + 1);
+            let addr = cpu.get_operand_address_from_base(&opcode.mode, current_PC + 1);
             let mem = cpu.mem_read(addr);
             (addr, mem)
         }
@@ -101,8 +101,8 @@ pub fn trace(cpu: &mut CPU) -> String {
         .join(" ");
 
     let op_string = format!("{:04X}  {:8} {: >4} {}", current_PC, instruction_string, opcode.mnemonic, address_string);
-    let status_string = format!("A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}", 
-                                    cpu.register_a, cpu.register_x, cpu.register_y, cpu.status.bits(), cpu.register_s);
+    let status_string = format!("A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} TICKS:{:}", 
+                                    cpu.register_a, cpu.register_x, cpu.register_y, cpu.status.bits(), cpu.register_s, cpu.bus.cycles);
 
     return format!("{:47} {:24}", op_string, status_string);
 }
@@ -118,7 +118,7 @@ mod test {
 
    #[test]
    fn test_format_trace() {
-       let mut bus = Bus::new(test_rom());
+       let mut bus = Bus::new(test_rom(), |_|{});
        bus.mem_write(100, 0xa2);
        bus.mem_write(101, 0x01);
        bus.mem_write(102, 0xca);
@@ -150,7 +150,7 @@ mod test {
 
    #[test]
    fn test_format_mem_access() {
-       let mut bus = Bus::new(test_rom());
+       let mut bus = Bus::new(test_rom(), |_|{});
        // ORA ($33), Y
        bus.mem_write(100, 0x11);
        bus.mem_write(101, 0x33);

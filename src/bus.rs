@@ -1,21 +1,25 @@
 use crate::{cpu::Memory, cartridge::Rom, ppu::ppu::PPU};
 
-pub struct Bus {
+pub struct Bus<'call> {
     cpu_vram: [u8; 2048],
     prg_rom: Vec<u8>,
     ppu: PPU,
 
-    cycles: usize,
+    pub cycles: usize,
+    gameloop_callback: Box<dyn FnMut(&PPU) + 'call>,
 }
 
-impl Bus {
-    pub fn new(rom: Rom) -> Self {
+impl<'a> Bus<'a> {
+    pub fn new<'call, F>(rom: Rom, gameloop_callback: F) -> Bus<'call> 
+    where F: FnMut(&PPU) + 'call,
+    {
         let ppu = PPU::new(rom.chr_rom, rom.screen_mirroring);
         Bus {
             cpu_vram: [0; 2048],
             prg_rom: rom.prg_rom,
             ppu,
             cycles: 0,
+            gameloop_callback: Box::from(gameloop_callback),
         }
     }
 
@@ -34,7 +38,12 @@ impl Bus {
 
     pub fn tick(&mut self, cycles: u8) {
         self.cycles += cycles as usize;
-        self.ppu.tick(cycles * 3); // PPU clock is 3x faster than CPU clock
+
+        let new_frame = self.ppu.tick(cycles * 3); // PPU clock is 3x faster than CPU clock
+
+        if new_frame {
+            (self.gameloop_callback)(&self.ppu);
+        }
     }
 }
 
@@ -52,7 +61,7 @@ const PPUDATA: u16   = 0x2007;
 const OAMDMA: u16    = 0x4014; 
 const PPU_REGISTERS_MIRRORS_END: u16 = 0x3FFF;
 
-impl Memory for Bus {
+impl Memory for Bus<'_> {
     fn mem_read(&mut self, addr: u16) -> u8 {
         match addr {
             RAM ..= RAM_MIRRORS_END => {
@@ -61,7 +70,8 @@ impl Memory for Bus {
             }
 
             PPUCTRL | PPUMASK | OAMADDR | PPUSCROLL | PPUADDR | OAMDMA => {
-                panic!("Attempting to read from write-only PPU Address {:X}", addr);
+                //panic!("Attempting to read from write-only PPU Address {:X}", addr);
+                0
             }
 
             PPUSTATUS => self.ppu.read_status(),
@@ -73,10 +83,26 @@ impl Memory for Bus {
                 self.mem_read(mirror_down_addr)
             }
 
+            0x4000..=0x4015 => {
+                //ignore APU 
+                0
+            }
+
+            0x4016 => {
+                // ignore joypad 1
+                0
+            }
+
+            0x4017 => {
+                // ignore joypad 2
+                0
+            }
+
+
             0x8000..=0xFFFF => self.read_prg_rom(addr),
 
             _ => {
-                println!("Unknown memory access at {}", addr);
+                println!("Unknown memory access at {:X}", addr);
                 0
             }
         }
@@ -91,7 +117,7 @@ impl Memory for Bus {
 
             PPUCTRL => self.ppu.write_to_control(data),
             PPUMASK => self.ppu.write_to_mask(data),
-            PPUSTATUS => panic!("Attempting to write {:X} to PPU Status", data),
+            PPUSTATUS => {},//panic!("Attempting to write {:X} to PPU Status", data),
             PPUADDR => self.ppu.write_to_ppu_addr(data),
             PPUSCROLL => self.ppu.write_to_scroll(data),
 
@@ -110,12 +136,27 @@ impl Memory for Bus {
                 self.ppu.oam_dma(&self.cpu_vram[start..end]);
             }
 
+            0x4000..=0x4013 | 0x4015 => {
+                //ignore APU 
+            
+            }
+
+            0x4016 => {
+                // ignore joypad 1;
+                
+            }
+
+            0x4017 => {
+                // ignore joypad 2
+                
+            }
+
             0x8000..=0xFFFF => {
                 panic!("Attempting to write to Cartridge ROM space")
             }
 
             _ => {
-                println!("Unknown memory access at {}", addr);
+                println!("Unknown memory access at {:X}", addr);
             }
         }
     }

@@ -29,6 +29,22 @@ impl ControlRegister {
         ControlRegister::from_bits_truncate(0b00000000)
     }
 
+    pub fn background_pattern_addr(&self) -> u16 {
+        if self.contains(ControlRegister::BACKROUND_PATTERN_ADDR) {
+            0x1000
+        } else {
+            0x0000
+        }
+    }
+
+    pub fn sprite_pattern_addr(&self) -> u16 {
+        if self.contains(ControlRegister::SPRITE_PATTERN_ADDR) {
+            0x1000
+        } else {
+            0x0000
+        }
+    }
+
     pub fn vram_addr_increment(&self) -> u8 {
         if !self.contains(ControlRegister::VRAM_ADD_INCREMENT) {
             1
