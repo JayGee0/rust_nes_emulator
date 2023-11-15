@@ -172,7 +172,7 @@ impl PPU {
             0x3000..=0x3EFF => panic!("Not expected to use addr space 0x3000..0x3EFF, requested = {} ", addr),
             0x3F10 | 0x3F14 | 0x3F18 | 0x3F1C => {
                 let add_mirror = addr - 0x10;
-                self.palette[self.mirror_vram_addr(add_mirror - 0x3F00) as usize] = value;
+                self.palette[(add_mirror - 0x3F00) as usize] = value;
             }
 
             0x3F00..=0x3FFF => self.palette[(addr - 0x3F00) as usize] = value,
