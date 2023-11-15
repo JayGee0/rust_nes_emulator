@@ -1,23 +1,26 @@
-use crate::{cpu::Memory, cartridge::Rom, ppu::ppu::PPU};
+use crate::{cpu::Memory, cartridge::Rom, ppu::ppu::PPU, input::joypad::Joypad};
 
 pub struct Bus<'call> {
     cpu_vram: [u8; 2048],
     prg_rom: Vec<u8>,
     ppu: PPU,
+    joypad: Joypad,
 
     pub cycles: usize,
-    gameloop_callback: Box<dyn FnMut(&PPU) + 'call>,
+    gameloop_callback: Box<dyn FnMut(&PPU, &mut Joypad) + 'call>,
 }
 
 impl<'a> Bus<'a> {
     pub fn new<'call, F>(rom: Rom, gameloop_callback: F) -> Bus<'call> 
-    where F: FnMut(&PPU) + 'call,
+    where F: FnMut(&PPU, &mut Joypad) + 'call,
     {
         let ppu = PPU::new(rom.chr_rom, rom.screen_mirroring);
+        let joypad = Joypad::new();
         Bus {
             cpu_vram: [0; 2048],
             prg_rom: rom.prg_rom,
             ppu,
+            joypad,
             cycles: 0,
             gameloop_callback: Box::from(gameloop_callback),
         }
@@ -42,7 +45,7 @@ impl<'a> Bus<'a> {
         let new_frame = self.ppu.tick(cycles * 3); // PPU clock is 3x faster than CPU clock
 
         if new_frame {
-            (self.gameloop_callback)(&self.ppu);
+            (self.gameloop_callback)(&self.ppu, &mut self.joypad);
         }
     }
 }
@@ -89,8 +92,7 @@ impl Memory for Bus<'_> {
             }
 
             0x4016 => {
-                // ignore joypad 1
-                0
+                self.joypad.read()
             }
 
             0x4017 => {
@@ -142,8 +144,7 @@ impl Memory for Bus<'_> {
             }
 
             0x4016 => {
-                // ignore joypad 1;
-                
+                self.joypad.write(data);
             }
 
             0x4017 => {
